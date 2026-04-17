@@ -43,3 +43,11 @@ nohup.out
 
 # Database (opcional - si quieres backup separado)
 # data/*.db
+
+# Datos sensibles
+data/*.db
+.env
+*.env
+
+# Documentacion interna
+Claude/

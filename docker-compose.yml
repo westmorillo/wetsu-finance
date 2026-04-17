@@ -1,0 +1,19 @@
+services:
+  wetsu-finance:
+    build: .
+    container_name: wetsu-finance
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DB_PATH=/app/data/finance.db
+      - STATIC_DIR=/app/static
+      - TEMPLATES_DIR=/app/templates
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.wetsu-finance.rule=Host(`finance.heywetsu.cloud`)
+      - traefik.http.routers.wetsu-finance.entrypoints=websecure
+      - traefik.http.routers.wetsu-finance.tls.certresolver=letsencrypt
+      - traefik.http.services.wetsu-finance.loadbalancer.server.port=8000

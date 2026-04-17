@@ -13,11 +13,12 @@ from datetime import datetime, date
 from pathlib import Path
 import sqlite3
 import json
+import os
 
-# Paths
-DB_PATH = Path('/root/.openclaw/workspace/finance/data/finance.db')
-STATIC_DIR = Path('/root/.openclaw/workspace/finance/app/static')
-TEMPLATES_DIR = Path('/root/.openclaw/workspace/finance/app/templates')
+# Paths — configurable via env vars for Docker
+DB_PATH = Path(os.getenv("DB_PATH", "/app/data/finance.db"))
+STATIC_DIR = Path(os.getenv("STATIC_DIR", "/app/static"))
+TEMPLATES_DIR = Path(os.getenv("TEMPLATES_DIR", "/app/templates"))
 
 app = FastAPI(title="Wetsu Finance", version="1.0.0")
 
@@ -162,7 +163,7 @@ async def get_transactions(
     
     # Get total count for pagination
     count_query = "SELECT COUNT(*) FROM transactions WHERE 1=1"
-    count_params = params[:-2]  # Remove limit and offset
+    count_params = params[:-2]
     
     if type:
         count_query += " AND type = ?"
@@ -225,13 +226,11 @@ async def update_transaction(transaction_id: int, update: TransactionUpdate):
     conn = get_db()
     cursor = conn.cursor()
     
-    # Check if exists
     cursor.execute("SELECT id FROM transactions WHERE id = ?", (transaction_id,))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Transaction not found")
     
-    # Build update query dynamically
     updates = []
     params = []
     
