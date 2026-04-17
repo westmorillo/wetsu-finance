@@ -92,60 +92,75 @@ function updateCharts(data) {
         expensesChart.destroy();
     }
     
-    expensesChart = new Chart(expenseCtx, {
-        type: 'doughnut',
-        data: {
-            labels: data.expenses_by_category.map(c => c.category_main),
-            datasets: [{
-                data: data.expenses_by_category.map(c => c.total),
-                backgroundColor: [
-                    '#e74c3c', '#3498db', '#f39c12', '#27ae60', 
-                    '#9b59b6', '#1abc9c', '#34495e', '#e67e22'
-                ]
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'right'
+    const expenseCanvas = document.getElementById('expensesChart');
+    const expenseEmptyEl = document.getElementById('expensesChart-empty') || (() => {
+        const el = document.createElement('p');
+        el.id = 'expensesChart-empty';
+        el.style.cssText = 'color:var(--text-dim);font-size:0.8rem;text-align:center;padding:60px 0;display:none';
+        el.textContent = 'No expense data yet';
+        expenseCanvas.after(el);
+        return el;
+    })();
+
+    const expenseContainer = expenseCanvas.parentElement;
+    if (!data.expenses_by_category || data.expenses_by_category.length === 0) {
+        expenseCanvas.style.display = 'none';
+        expenseEmptyEl.style.display = 'block';
+        expenseContainer.classList.add('empty');
+    } else {
+        expenseCanvas.style.display = '';
+        expenseEmptyEl.style.display = 'none';
+        expenseContainer.classList.remove('empty');
+        expensesChart = new Chart(expenseCtx, {
+            type: 'doughnut',
+            data: {
+                labels: data.expenses_by_category.map(c => c.category_main),
+                datasets: [{
+                    data: data.expenses_by_category.map(c => c.total),
+                    backgroundColor: ['#f87171','#60a5fa','#d4a853','#4ade80','#a78bfa','#34d399','#6b7280','#fb923c'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { color: '#6b6b7a', font: { family: 'Outfit', size: 12 }, boxWidth: 12 }
+                    }
                 }
             }
-        }
-    });
-    
+        });
+    }
+
     // Monthly trend
     const trendCtx = document.getElementById('trendChart').getContext('2d');
-    
+
     if (trendChart) {
         trendChart.destroy();
     }
-    
+
     const monthly = data.monthly_trend.reverse();
-    
+
     trendChart = new Chart(trendCtx, {
         type: 'bar',
         data: {
             labels: monthly.map(m => m.month),
             datasets: [
-                {
-                    label: 'Income',
-                    data: monthly.map(m => m.income || 0),
-                    backgroundColor: '#27ae60'
-                },
-                {
-                    label: 'Expense',
-                    data: monthly.map(m => m.expense || 0),
-                    backgroundColor: '#e74c3c'
-                }
+                { label: 'Income',  data: monthly.map(m => m.income  || 0), backgroundColor: '#4ade80' },
+                { label: 'Expense', data: monthly.map(m => m.expense || 0), backgroundColor: '#f87171' }
             ]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             scales: {
-                y: {
-                    beginAtZero: true
-                }
+                x: { ticks: { color: '#6b6b7a' }, grid: { color: '#1e1e28' } },
+                y: { beginAtZero: true, ticks: { color: '#6b6b7a' }, grid: { color: '#1e1e28' } }
+            },
+            plugins: {
+                legend: { labels: { color: '#6b6b7a', font: { family: 'Outfit', size: 12 }, boxWidth: 12 } }
             }
         }
     });
@@ -172,11 +187,11 @@ async function loadTransactions() {
         const table = document.querySelector('#transactions-table tbody');
         table.innerHTML = data.transactions.map(t => `
             <tr>
-                <td>${t.id}</td>
+                <td class="col-id">${t.id}</td>
                 <td>${formatDate(t.date)}</td>
                 <td><span class="badge ${t.type}">${t.type}</span></td>
                 <td>${t.category_main}</td>
-                <td>${t.category_sub}</td>
+                <td class="col-subcat">${t.category_sub}</td>
                 <td>${t.note || '-'}</td>
                 <td class="${t.type === 'income' ? 'positive' : 'negative'}">${formatCurrency(t.amount)}</td>
                 <td>
@@ -379,6 +394,11 @@ document.getElementById('trans-date').valueAsDate = new Date();
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
+    const dateEl = document.getElementById('header-date');
+    if (dateEl) {
+        const now = new Date();
+        dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    }
     loadCategories();
     loadDashboard();
 });

@@ -4,14 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wetsu Finance Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=9">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>💰 Wetsu Finance</h1>
-            <p>Personal Finance Dashboard</p>
+            <div class="header-brand">
+                <h1>Wetsu <span>Finance</span></h1>
+                <p>Personal Finance Dashboard</p>
+            </div>
+            <div class="header-date" id="header-date"></div>
         </header>
 
         <nav class="tabs">
@@ -57,18 +60,20 @@
 
             <div class="recent-section">
                 <h3>Recent Transactions</h3>
-                <table id="recent-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Category</th>
-                            <th>Note</th>
-                            <th>Amount</th>
-                            <th>Type</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+                <div class="table-scroll">
+                    <table id="recent-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Note</th>
+                                <th>Amount</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -89,21 +94,23 @@
                 <button onclick="loadTransactions()">Filter</button>
             </div>
 
-            <table id="transactions-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Date</th>
-                        <th>Type</th>
-                        <th>Category</th>
-                        <th>Subcategory</th>
-                        <th>Note</th>
-                        <th>Amount</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+            <div class="table-scroll">
+                <table id="transactions-table">
+                    <thead>
+                        <tr>
+                            <th class="col-id">ID</th>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th class="col-subcat">Subcategory</th>
+                            <th>Note</th>
+                            <th>Amount</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
 
             <div class="pagination">
                 <button onclick="prevPage()">← Previous</button>
@@ -214,6 +221,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=3"></script>
 </body>
 </html>
