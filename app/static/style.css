@@ -894,6 +894,23 @@ form { max-width: 640px; }
   letter-spacing: 0.08em;
 }
 
+.wallet-due-badge {
+  font-size: 0.72rem;
+  padding: 5px 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  display: inline-block;
+}
+.wallet-due-badge.due-ok     { background: rgba(74,222,128,0.1);  color: var(--green); }
+.wallet-due-badge.due-soon   { background: rgba(251,146,60,0.15); color: #fb923c; }
+.wallet-due-badge.due-urgent { background: var(--red-dim);        color: var(--red); }
+
+.form-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .btn-adjust {
   padding: 4px 10px;
   background: none;

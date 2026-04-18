@@ -38,6 +38,11 @@ def run_migrations(conn):
     cols = {row['name'] for row in cursor.fetchall()}
     if 'wallet_id' not in cols:
         cursor.execute("ALTER TABLE transactions ADD COLUMN wallet_id INTEGER REFERENCES wallets(id)")
+    # Add due_day to wallets if not present
+    cursor.execute("PRAGMA table_info(wallets)")
+    wcols = {row['name'] for row in cursor.fetchall()}
+    if 'due_day' not in wcols:
+        cursor.execute("ALTER TABLE wallets ADD COLUMN due_day INTEGER")
     # Create transfers table if not present (not in original schema.sql)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS transfers (
@@ -108,10 +113,12 @@ class WalletCreate(BaseModel):
     type: str
     initial_balance: int = 0
     currency: str = "CLP"
+    due_day: Optional[int] = None   # día de vencimiento mensual (solo TC)
 
 class WalletUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
+    due_day: Optional[int] = None
 
 class WalletAdjustment(BaseModel):
     target_balance: int  # puede ser negativo (ej: saldo deudor en TC)
@@ -399,9 +406,9 @@ async def create_wallet(wallet: WalletCreate):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO wallets (name, type, initial_balance, currency)
-        VALUES (?, ?, ?, ?)
-    """, (wallet.name, wallet.type, wallet.initial_balance, wallet.currency))
+        INSERT INTO wallets (name, type, initial_balance, currency, due_day)
+        VALUES (?, ?, ?, ?, ?)
+    """, (wallet.name, wallet.type, wallet.initial_balance, wallet.currency, wallet.due_day))
     wallet_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -424,6 +431,9 @@ async def update_wallet(wallet_id: int, update: WalletUpdate):
     if update.type is not None:
         updates.append("type = ?")
         params.append(update.type)
+    if update.due_day is not None:
+        updates.append("due_day = ?")
+        params.append(update.due_day)
 
     if not updates:
         conn.close()

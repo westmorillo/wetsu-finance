@@ -294,7 +294,16 @@ async function loadCarteras() {
         grid.innerHTML = '<p class="empty-state">No hay carteras aún. Crea una con el botón de arriba.</p>';
         return;
     }
-    grid.innerHTML = wallets.map(w => `
+    grid.innerHTML = wallets.map(w => {
+        const days = daysUntilDue(w.due_day);
+        let dueBadge = '';
+        if (w.due_day) {
+            const urgency = days <= 3 ? 'due-urgent' : days <= 7 ? 'due-soon' : 'due-ok';
+            dueBadge = `<div class="wallet-due-badge ${urgency}">
+                Vence día ${w.due_day} — <strong>${days === 0 ? 'hoy' : days === 1 ? 'mañana' : `${days} días`}</strong>
+            </div>`;
+        }
+        return `
         <div class="wallet-card">
             <div class="wallet-card-header">
                 <span class="wallet-type-badge">${w.type}</span>
@@ -305,12 +314,21 @@ async function loadCarteras() {
             </div>
             <div class="wallet-card-name">${w.name}</div>
             <div class="wallet-card-balance">${formatCurrency(w.current_balance)}</div>
+            ${dueBadge}
             <div class="wallet-card-footer">
                 <span class="wallet-card-currency">${w.currency}</span>
                 <button class="btn-adjust" onclick="openAdjustModal(${w.id}, ${w.current_balance}, '${w.name}')">Ajustar saldo</button>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
+}
+
+function daysUntilDue(dueDay) {
+    if (!dueDay) return null;
+    const today = new Date();
+    let next = new Date(today.getFullYear(), today.getMonth(), dueDay);
+    if (next <= today) next = new Date(today.getFullYear(), today.getMonth() + 1, dueDay);
+    return Math.ceil((next - today) / 86400000);
 }
 
 function openWalletModal(editId = null) {
@@ -318,22 +336,35 @@ function openWalletModal(editId = null) {
     document.getElementById('wallet-modal-title').textContent = editId ? 'Editar Cartera' : 'Nueva Cartera';
     document.getElementById('wallet-balance-row').style.display = editId ? 'none' : '';
     document.getElementById('wallet-form').reset();
+
+    const typeSelect = document.getElementById('wallet-type');
+    const dueDayRow  = document.getElementById('wallet-dueday-row');
+
+    const toggleDueDay = () => {
+        dueDayRow.style.display = typeSelect.value === 'Tarjeta Crédito' ? '' : 'none';
+    };
+    typeSelect.onchange = toggleDueDay;
+
     if (editId) {
         const w = wallets.find(x => x.id === editId);
         if (w) {
-            document.getElementById('wallet-name').value = w.name;
-            document.getElementById('wallet-type').value = w.type;
+            document.getElementById('wallet-name').value  = w.name;
+            document.getElementById('wallet-type').value  = w.type;
+            document.getElementById('wallet-due-day').value = w.due_day || '';
         }
     }
+    toggleDueDay();
     document.getElementById('new-wallet-modal').style.display = 'block';
 }
 
 document.getElementById('wallet-form')?.addEventListener('submit', async function (e) {
     e.preventDefault();
     const editId = document.getElementById('wallet-edit-id').value;
+    const dueDayVal = parseInt(document.getElementById('wallet-due-day').value);
     const body = {
-        name: document.getElementById('wallet-name').value,
-        type: document.getElementById('wallet-type').value
+        name:    document.getElementById('wallet-name').value,
+        type:    document.getElementById('wallet-type').value,
+        due_day: dueDayVal || null
     };
     if (!editId) body.initial_balance = parseInt(document.getElementById('wallet-initial-balance').value) || 0;
 
