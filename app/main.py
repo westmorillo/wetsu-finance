@@ -381,7 +381,7 @@ async def get_categories():
 async def get_wallets():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT w.id, w.name, w.type, w.currency, w.initial_balance, w.created_at,
                {_BALANCE_SQL} AS current_balance
         FROM wallets w
