@@ -206,8 +206,6 @@ header p {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 28px;
-  height: 320px;
-  overflow: hidden;
 }
 
 .chart-container h3 {
@@ -219,7 +217,14 @@ header p {
   margin-bottom: 24px;
 }
 
-.chart-container canvas {
+/* Chart.js requires a positioned wrapper with explicit height
+   when maintainAspectRatio: false is set */
+.chart-canvas-wrap {
+  position: relative;
+  height: 260px;
+}
+
+.chart-canvas-wrap canvas {
   max-width: 100%;
 }
 
@@ -638,8 +643,8 @@ form { max-width: 640px; }
   .pagination { gap: 12px; }
   .pagination button { padding: 8px 14px; font-size: 0.8rem; }
 
-  /* Chart containers: fixed height on mobile */
-  .chart-container { height: 240px; }
+  /* Chart canvas wrapper: shorter on mobile */
+  .chart-canvas-wrap { height: 200px; }
   .chart-container.empty { height: auto; }
 
   /* Card layout for BOTH tables on mobile */
