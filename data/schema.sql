@@ -49,10 +49,51 @@ CREATE TABLE IF NOT EXISTS savings_goals (
     is_active BOOLEAN DEFAULT 1
 );
 
+-- Carteras / Cuentas
+CREATE TABLE IF NOT EXISTS wallets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,               -- 'Débito', 'Tarjeta Crédito', 'Efectivo', 'Otra'
+    initial_balance INTEGER NOT NULL DEFAULT 0,
+    currency TEXT DEFAULT 'CLP',
+    is_active BOOLEAN DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Deudas
+CREATE TABLE IF NOT EXISTS debts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    direction TEXT NOT NULL CHECK(direction IN ('owed_by_me', 'owed_to_me')),
+    counterpart_name TEXT NOT NULL,
+    total_amount INTEGER NOT NULL,
+    remaining_amount INTEGER NOT NULL,
+    installments INTEGER DEFAULT 1,
+    installment_amount INTEGER,
+    due_date TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'paid')),
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Pagos de deudas
+CREATE TABLE IF NOT EXISTS debt_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    debt_id INTEGER NOT NULL REFERENCES debts(id),
+    transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+    amount INTEGER NOT NULL,
+    payment_date TEXT NOT NULL,
+    installment_number INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Índices para búsquedas rápidas
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_main, category_sub);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
+CREATE INDEX IF NOT EXISTS idx_transactions_wallet ON transactions(wallet_id);
+CREATE INDEX IF NOT EXISTS idx_debt_payments_debt ON debt_payments(debt_id);
 
 -- Insertar categorías base basadas en tus datos
 INSERT OR IGNORE INTO categories (main_category, sub_category, type) VALUES

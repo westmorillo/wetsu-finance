@@ -4,94 +4,111 @@ const API_BASE = '';
 let currentPage = 0;
 const pageSize = 25;
 let categories = {};
+let wallets = [];
 let expensesChart = null;
 let trendChart = null;
 
-// Tab navigation
+// ── Tab navigation ──────────────────────────────────────────
 function showTab(tabName) {
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(tabName).classList.add('active');
     event.target.classList.add('active');
-    
-    if (tabName === 'dashboard') {
-        loadDashboard();
-    } else if (tabName === 'transactions') {
-        loadTransactions();
-    }
+
+    if (tabName === 'dashboard')         loadDashboard();
+    else if (tabName === 'transactions') { currentPage = 0; loadTransactions(); }
+    else if (tabName === 'carteras')     loadCarteras();
+    else if (tabName === 'deudas')       loadDeudas();
 }
 
-// Format currency
+// ── Formatters ──────────────────────────────────────────────
 function formatCurrency(amount) {
     return '$' + parseInt(amount).toLocaleString('en-US');
 }
 
-// Format date
 function formatDate(dateStr) {
+    if (!dateStr) return '—';
     return new Date(dateStr).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
+        year: 'numeric', month: 'short', day: 'numeric'
     });
 }
 
-// Load dashboard data
+// ── Dashboard ───────────────────────────────────────────────
 async function loadDashboard() {
     try {
         const response = await fetch(`${API_BASE}/api/dashboard`);
         const data = await response.json();
-        
-        // Update summary cards
-        const income = data.summary.income || { count: 0, total: 0 };
-        const expense = data.summary.expense || { count: 0, total: 0 };
+
+        const income     = data.summary.income     || { count: 0, total: 0 };
+        const expense    = data.summary.expense    || { count: 0, total: 0 };
         const investment = data.summary.investment || { count: 0, total: 0 };
-        
-        document.getElementById('total-income').textContent = formatCurrency(income.total);
-        document.getElementById('income-count').textContent = `${income.count} transactions`;
-        
-        document.getElementById('total-expense').textContent = formatCurrency(expense.total);
-        document.getElementById('expense-count').textContent = `${expense.count} transactions`;
-        
+
+        document.getElementById('total-income').textContent     = formatCurrency(income.total);
+        document.getElementById('income-count').textContent     = `${income.count} transactions`;
+        document.getElementById('total-expense').textContent    = formatCurrency(expense.total);
+        document.getElementById('expense-count').textContent    = `${expense.count} transactions`;
         document.getElementById('total-investment').textContent = formatCurrency(investment.total);
         document.getElementById('investment-count').textContent = `${investment.count} transactions`;
-        
-        const netBalance = income.total - expense.total - investment.total;
-        document.getElementById('net-balance').textContent = formatCurrency(netBalance);
-        
-        // Update recent transactions table
-        const recentTable = document.querySelector('#recent-table tbody');
-        recentTable.innerHTML = data.recent_transactions.map(t => `
+
+        const net = income.total - expense.total - investment.total;
+        document.getElementById('net-balance').textContent = formatCurrency(net);
+
+        // Recent transactions
+        const recentBody = document.querySelector('#recent-table tbody');
+        recentBody.innerHTML = data.recent_transactions.map(t => `
             <tr>
                 <td>${formatDate(t.date)}</td>
                 <td>${t.category_main}</td>
-                <td>${t.note || '-'}</td>
+                <td>${t.note || '—'}</td>
                 <td class="${t.type === 'income' ? 'positive' : 'negative'}">${formatCurrency(t.amount)}</td>
                 <td><span class="badge ${t.type}">${t.type}</span></td>
             </tr>
         `).join('');
-        
-        // Update charts
+
+        renderWalletStrip(data.wallets || []);
+        renderDebtSummaryBar(data.debt_summary || {});
         updateCharts(data);
-        
-    } catch (error) {
-        console.error('Error loading dashboard:', error);
+    } catch (err) {
+        console.error('Error loading dashboard:', err);
     }
 }
 
-// Update charts
+function renderWalletStrip(ws) {
+    const strip = document.getElementById('wallet-strip');
+    if (!ws.length) { strip.innerHTML = ''; return; }
+    strip.innerHTML = ws.map(w => `
+        <div class="card wallet">
+            <div class="wallet-type">${w.type}</div>
+            <h3>${w.name}</h3>
+            <div class="amount">${formatCurrency(w.current_balance)}</div>
+        </div>
+    `).join('');
+}
+
+function renderDebtSummaryBar(ds) {
+    const bar = document.getElementById('debt-summary-bar');
+    if (!ds.active_count) { bar.innerHTML = ''; return; }
+    bar.innerHTML = `
+        <div class="debt-summary-item owed-by-me">
+            <span class="debt-label">Debo</span>
+            <span class="debt-amount">${formatCurrency(ds.total_owed_by_me)}</span>
+        </div>
+        <div class="debt-summary-item owed-to-me">
+            <span class="debt-label">Me deben</span>
+            <span class="debt-amount">${formatCurrency(ds.total_owed_to_me)}</span>
+        </div>
+        <div class="debt-summary-item">
+            <span class="debt-label">Deudas activas</span>
+            <span class="debt-amount">${ds.active_count}</span>
+        </div>
+    `;
+}
+
+// ── Charts ──────────────────────────────────────────────────
 function updateCharts(data) {
-    // Expenses by category
     const expenseCtx = document.getElementById('expensesChart').getContext('2d');
-    
-    if (expensesChart) {
-        expensesChart.destroy();
-    }
-    
+    if (expensesChart) expensesChart.destroy();
+
     const expenseCanvas = document.getElementById('expensesChart');
     const expenseEmptyEl = document.getElementById('expensesChart-empty') || (() => {
         const el = document.createElement('p');
@@ -134,14 +151,9 @@ function updateCharts(data) {
         });
     }
 
-    // Monthly trend
     const trendCtx = document.getElementById('trendChart').getContext('2d');
-
-    if (trendChart) {
-        trendChart.destroy();
-    }
-
-    const monthly = data.monthly_trend.reverse();
+    if (trendChart) trendChart.destroy();
+    const monthly = [...data.monthly_trend].reverse();
 
     trendChart = new Chart(trendCtx, {
         type: 'bar',
@@ -166,33 +178,32 @@ function updateCharts(data) {
     });
 }
 
-// Load transactions with pagination
+// ── Transactions ────────────────────────────────────────────
 async function loadTransactions() {
     try {
-        const typeFilter = document.getElementById('filter-type').value;
+        const typeFilter     = document.getElementById('filter-type').value;
         const categoryFilter = document.getElementById('filter-category').value;
-        const startDate = document.getElementById('filter-start').value;
-        const endDate = document.getElementById('filter-end').value;
-        
+        const startDate      = document.getElementById('filter-start').value;
+        const endDate        = document.getElementById('filter-end').value;
+
         let url = `${API_BASE}/api/transactions?limit=${pageSize}&offset=${currentPage * pageSize}`;
-        
-        if (typeFilter) url += `&type=${typeFilter}`;
+        if (typeFilter)     url += `&type=${typeFilter}`;
         if (categoryFilter) url += `&category=${categoryFilter}`;
-        if (startDate) url += `&start_date=${startDate}`;
-        if (endDate) url += `&end_date=${endDate}`;
-        
+        if (startDate)      url += `&start_date=${startDate}`;
+        if (endDate)        url += `&end_date=${endDate}`;
+
         const response = await fetch(url);
         const data = await response.json();
-        
-        const table = document.querySelector('#transactions-table tbody');
-        table.innerHTML = data.transactions.map(t => `
+
+        const tbody = document.querySelector('#transactions-table tbody');
+        tbody.innerHTML = data.transactions.map(t => `
             <tr>
                 <td class="col-id">${t.id}</td>
                 <td>${formatDate(t.date)}</td>
                 <td><span class="badge ${t.type}">${t.type}</span></td>
                 <td>${t.category_main}</td>
                 <td class="col-subcat">${t.category_sub}</td>
-                <td>${t.note || '-'}</td>
+                <td>${t.note || '—'}</td>
                 <td class="${t.type === 'income' ? 'positive' : 'negative'}">${formatCurrency(t.amount)}</td>
                 <td>
                     <button class="action-btn edit" onclick="editTransaction(${t.id})">Edit</button>
@@ -200,205 +211,378 @@ async function loadTransactions() {
                 </td>
             </tr>
         `).join('');
-        
+
         const totalPages = Math.ceil(data.total / pageSize);
         document.getElementById('page-info').textContent = `Page ${currentPage + 1} of ${totalPages || 1}`;
-        
-    } catch (error) {
-        console.error('Error loading transactions:', error);
+    } catch (err) {
+        console.error('Error loading transactions:', err);
     }
 }
 
-// Pagination
-function prevPage() {
-    if (currentPage > 0) {
-        currentPage--;
-        loadTransactions();
-    }
-}
+function prevPage() { if (currentPage > 0) { currentPage--; loadTransactions(); } }
+function nextPage() { currentPage++; loadTransactions(); }
 
-function nextPage() {
-    currentPage++;
-    loadTransactions();
-}
-
-// Load categories
+// ── Categories ──────────────────────────────────────────────
 async function loadCategories() {
     try {
         const response = await fetch(`${API_BASE}/api/categories`);
         categories = await response.json();
-        
-        // Populate main category dropdown
-        const mainCatSelect = document.getElementById('trans-main-cat');
+
+        const mainCatSelect   = document.getElementById('trans-main-cat');
         const filterCatSelect = document.getElementById('filter-category');
-        
+
         Object.keys(categories).forEach(cat => {
-            const option = document.createElement('option');
-            option.value = cat;
-            option.textContent = cat;
-            mainCatSelect.appendChild(option);
-            
-            const filterOption = document.createElement('option');
-            filterOption.value = cat;
-            filterOption.textContent = cat;
-            filterCatSelect.appendChild(filterOption);
+            [mainCatSelect, filterCatSelect].forEach(sel => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                sel.appendChild(opt);
+            });
         });
-        
-    } catch (error) {
-        console.error('Error loading categories:', error);
+    } catch (err) {
+        console.error('Error loading categories:', err);
     }
 }
 
-// Update subcategories when main category changes
-document.getElementById('trans-main-cat')?.addEventListener('change', function() {
+document.getElementById('trans-main-cat')?.addEventListener('change', function () {
     const subCatSelect = document.getElementById('trans-sub-cat');
     subCatSelect.innerHTML = '<option value="">Select...</option>';
-    
-    const selectedMain = this.value;
-    if (selectedMain && categories[selectedMain]) {
-        categories[selectedMain].forEach(sub => {
-            const option = document.createElement('option');
-            option.value = sub.sub;
-            option.textContent = sub.sub;
-            subCatSelect.appendChild(option);
+    if (this.value && categories[this.value]) {
+        categories[this.value].forEach(sub => {
+            const opt = document.createElement('option');
+            opt.value = sub.sub;
+            opt.textContent = sub.sub;
+            subCatSelect.appendChild(opt);
         });
     }
 });
 
-// Add transaction form
-document.getElementById('transaction-form')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const transaction = {
-        date: document.getElementById('trans-date').value,
-        amount: parseInt(document.getElementById('trans-amount').value),
-        currency: document.getElementById('trans-currency').value,
-        type: document.getElementById('trans-type').value,
-        category_main: document.getElementById('trans-main-cat').value,
-        category_sub: document.getElementById('trans-sub-cat').value,
-        note: document.getElementById('trans-note').value,
-        source: 'app'
-    };
-    
+// ── Wallets ─────────────────────────────────────────────────
+async function loadWallets() {
     try {
-        const response = await fetch(`${API_BASE}/api/transactions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(transaction)
+        const response = await fetch(`${API_BASE}/api/wallets`);
+        wallets = await response.json();
+        populateWalletSelects();
+    } catch (err) {
+        console.error('Error loading wallets:', err);
+    }
+}
+
+function populateWalletSelects() {
+    ['trans-wallet', 'edit-wallet', 'payment-wallet'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const current = sel.value;
+        sel.innerHTML = '<option value="">Sin cartera</option>';
+        wallets.forEach(w => {
+            const opt = document.createElement('option');
+            opt.value = w.id;
+            opt.textContent = `${w.name} (${w.type})`;
+            sel.appendChild(opt);
         });
-        
-        if (response.ok) {
+        sel.value = current;
+    });
+}
+
+async function loadCarteras() {
+    await loadWallets();
+    const grid = document.getElementById('wallets-grid');
+    if (!wallets.length) {
+        grid.innerHTML = '<p class="empty-state">No hay carteras aún. Crea una con el botón de arriba.</p>';
+        return;
+    }
+    grid.innerHTML = wallets.map(w => `
+        <div class="wallet-card">
+            <div class="wallet-card-header">
+                <span class="wallet-type-badge">${w.type}</span>
+                <div class="wallet-card-actions">
+                    <button class="action-btn edit" onclick="openWalletModal(${w.id})">Editar</button>
+                    <button class="action-btn delete" onclick="deactivateWallet(${w.id})">Desactivar</button>
+                </div>
+            </div>
+            <div class="wallet-card-name">${w.name}</div>
+            <div class="wallet-card-balance">${formatCurrency(w.current_balance)}</div>
+            <div class="wallet-card-currency">${w.currency}</div>
+        </div>
+    `).join('');
+}
+
+function openWalletModal(editId = null) {
+    document.getElementById('wallet-edit-id').value = editId || '';
+    document.getElementById('wallet-modal-title').textContent = editId ? 'Editar Cartera' : 'Nueva Cartera';
+    document.getElementById('wallet-balance-row').style.display = editId ? 'none' : '';
+    document.getElementById('wallet-form').reset();
+    if (editId) {
+        const w = wallets.find(x => x.id === editId);
+        if (w) {
+            document.getElementById('wallet-name').value = w.name;
+            document.getElementById('wallet-type').value = w.type;
+        }
+    }
+    document.getElementById('new-wallet-modal').style.display = 'block';
+}
+
+document.getElementById('wallet-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const editId = document.getElementById('wallet-edit-id').value;
+    const body = {
+        name: document.getElementById('wallet-name').value,
+        type: document.getElementById('wallet-type').value
+    };
+    if (!editId) body.initial_balance = parseInt(document.getElementById('wallet-initial-balance').value) || 0;
+
+    const url    = editId ? `${API_BASE}/api/wallets/${editId}` : `${API_BASE}/api/wallets`;
+    const method = editId ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (res.ok) {
+            closeModal('new-wallet-modal');
+            loadCarteras();
+            loadWallets();
+        } else {
+            alert('Error guardando cartera');
+        }
+    } catch (err) {
+        console.error(err);
+    }
+});
+
+async function deactivateWallet(id) {
+    if (!confirm('¿Desactivar esta cartera?')) return;
+    try {
+        await fetch(`${API_BASE}/api/wallets/${id}`, { method: 'DELETE' });
+        loadCarteras();
+        loadWallets();
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+// ── Debts ───────────────────────────────────────────────────
+async function loadDeudas() {
+    try {
+        const res   = await fetch(`${API_BASE}/api/debts`);
+        const debts = await res.json();
+        renderDebtTable('debts-owed-by-me-table', debts.filter(d => d.direction === 'owed_by_me'), 'Sin deudas activas');
+        renderDebtTable('debts-owed-to-me-table', debts.filter(d => d.direction === 'owed_to_me'), 'Sin préstamos activos');
+    } catch (err) {
+        console.error('Error loading debts:', err);
+    }
+}
+
+function renderDebtTable(tableId, debts, emptyMsg) {
+    const tbody = document.querySelector(`#${tableId} tbody`);
+    if (!debts.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-row">${emptyMsg}</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = debts.map(d => {
+        const paid   = d.status === 'paid';
+        const cuotas = d.installments > 1
+            ? `${d.installments} × ${formatCurrency(d.installment_amount)}`
+            : '—';
+        return `
+            <tr class="${paid ? 'debt-row-paid' : ''}">
+                <td>${d.counterpart_name}</td>
+                <td>${formatCurrency(d.total_amount)}</td>
+                <td>${formatCurrency(d.remaining_amount)}</td>
+                <td>${cuotas}</td>
+                <td>${d.due_date ? formatDate(d.due_date) : '—'}</td>
+                <td><span class="badge ${paid ? 'paid' : 'active-debt'}">${paid ? 'Pagada' : 'Activa'}</span></td>
+                <td>${!paid ? `<button class="action-btn edit" onclick="openPaymentModal(${d.id}, ${d.remaining_amount})">Pagar</button>` : ''}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function openDebtModal() {
+    document.getElementById('debt-form').reset();
+    document.getElementById('new-debt-modal').style.display = 'block';
+}
+
+document.getElementById('debt-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const body = {
+        direction:        document.getElementById('debt-direction').value,
+        counterpart_name: document.getElementById('debt-counterpart').value,
+        total_amount:     parseInt(document.getElementById('debt-amount').value),
+        installments:     parseInt(document.getElementById('debt-installments').value) || 1,
+        due_date:         document.getElementById('debt-due-date').value || null,
+        notes:            document.getElementById('debt-notes').value
+    };
+    try {
+        const res = await fetch(`${API_BASE}/api/debts`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (res.ok) {
+            closeModal('new-debt-modal');
+            loadDeudas();
+        } else {
+            alert('Error creando deuda');
+        }
+    } catch (err) {
+        console.error(err);
+    }
+});
+
+function openPaymentModal(debtId, remaining) {
+    document.getElementById('payment-form').reset();
+    document.getElementById('payment-debt-id').value = debtId;
+    document.getElementById('payment-amount').max = remaining;
+    document.getElementById('payment-amount').placeholder = `Máx: ${formatCurrency(remaining)}`;
+    document.getElementById('payment-date').valueAsDate = new Date();
+    populateWalletSelects();
+    document.getElementById('debt-payment-modal').style.display = 'block';
+}
+
+document.getElementById('payment-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const debtId    = document.getElementById('payment-debt-id').value;
+    const walletVal = document.getElementById('payment-wallet').value;
+    const body = {
+        amount:             parseInt(document.getElementById('payment-amount').value),
+        payment_date:       document.getElementById('payment-date').value,
+        wallet_id:          walletVal ? parseInt(walletVal) : null,
+        installment_number: parseInt(document.getElementById('payment-installment').value) || null,
+        notes:              document.getElementById('payment-notes').value
+    };
+    try {
+        const res = await fetch(`${API_BASE}/api/debts/${debtId}/payments`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (res.ok) {
+            closeModal('debt-payment-modal');
+            loadDeudas();
+            loadDashboard();
+        } else {
+            const err = await res.json();
+            alert(err.detail || 'Error registrando pago');
+        }
+    } catch (err) {
+        console.error(err);
+    }
+});
+
+// ── Add Transaction ──────────────────────────────────────────
+document.getElementById('transaction-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const walletVal = document.getElementById('trans-wallet').value;
+    const transaction = {
+        date:          document.getElementById('trans-date').value,
+        amount:        parseInt(document.getElementById('trans-amount').value),
+        currency:      'CLP',
+        type:          document.getElementById('trans-type').value,
+        category_main: document.getElementById('trans-main-cat').value,
+        category_sub:  document.getElementById('trans-sub-cat').value,
+        note:          document.getElementById('trans-note').value,
+        source:        'app',
+        wallet_id:     walletVal ? parseInt(walletVal) : null
+    };
+    try {
+        const res = await fetch(`${API_BASE}/api/transactions`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(transaction)
+        });
+        if (res.ok) {
             alert('Transaction added successfully!');
             this.reset();
+            document.getElementById('trans-date').valueAsDate = new Date();
             loadDashboard();
         } else {
             alert('Error adding transaction');
         }
-    } catch (error) {
-        console.error('Error:', error);
+    } catch (err) {
+        console.error(err);
         alert('Error adding transaction');
     }
 });
 
-// Edit transaction
+// ── Edit Transaction ─────────────────────────────────────────
 async function editTransaction(id) {
     try {
-        const response = await fetch(`${API_BASE}/api/transactions/${id}`);
-        const transaction = await response.json();
-        
-        document.getElementById('edit-id').value = transaction.id;
-        document.getElementById('edit-date').value = transaction.date;
-        document.getElementById('edit-amount').value = transaction.amount;
-        document.getElementById('edit-type').value = transaction.type;
-        document.getElementById('edit-main-cat').value = transaction.category_main;
-        document.getElementById('edit-sub-cat').value = transaction.category_sub;
-        document.getElementById('edit-note').value = transaction.note || '';
-        
+        const res = await fetch(`${API_BASE}/api/transactions/${id}`);
+        const t   = await res.json();
+
+        document.getElementById('edit-id').value       = t.id;
+        document.getElementById('edit-date').value     = t.date;
+        document.getElementById('edit-amount').value   = t.amount;
+        document.getElementById('edit-type').value     = t.type;
+        document.getElementById('edit-main-cat').value = t.category_main;
+        document.getElementById('edit-sub-cat').value  = t.category_sub;
+        document.getElementById('edit-note').value     = t.note || '';
+
+        populateWalletSelects();
+        if (t.wallet_id) document.getElementById('edit-wallet').value = t.wallet_id;
+
         document.getElementById('edit-modal').style.display = 'block';
-    } catch (error) {
-        console.error('Error loading transaction:', error);
+    } catch (err) {
+        console.error('Error loading transaction:', err);
     }
 }
 
-// Update transaction
-document.getElementById('edit-form')?.addEventListener('submit', async function(e) {
+document.getElementById('edit-form')?.addEventListener('submit', async function (e) {
     e.preventDefault();
-    
-    const id = document.getElementById('edit-id').value;
-    
+    const id        = document.getElementById('edit-id').value;
+    const walletVal = document.getElementById('edit-wallet').value;
     const updates = {
-        date: document.getElementById('edit-date').value,
-        amount: parseInt(document.getElementById('edit-amount').value),
-        type: document.getElementById('edit-type').value,
+        date:          document.getElementById('edit-date').value,
+        amount:        parseInt(document.getElementById('edit-amount').value),
+        type:          document.getElementById('edit-type').value,
         category_main: document.getElementById('edit-main-cat').value,
-        category_sub: document.getElementById('edit-sub-cat').value,
-        note: document.getElementById('edit-note').value
+        category_sub:  document.getElementById('edit-sub-cat').value,
+        note:          document.getElementById('edit-note').value,
+        wallet_id:     walletVal ? parseInt(walletVal) : null
     };
-    
     try {
-        const response = await fetch(`${API_BASE}/api/transactions/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updates)
+        const res = await fetch(`${API_BASE}/api/transactions/${id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates)
         });
-        
-        if (response.ok) {
-            alert('Transaction updated!');
-            closeModal();
+        if (res.ok) {
+            closeModal('edit-modal');
             loadTransactions();
         } else {
             alert('Error updating transaction');
         }
-    } catch (error) {
-        console.error('Error:', error);
+    } catch (err) {
+        console.error(err);
     }
 });
 
-// Delete transaction
+// ── Delete Transaction ───────────────────────────────────────
 async function deleteTransaction(id) {
-    if (!confirm('Are you sure you want to delete this transaction?')) {
-        return;
-    }
-    
+    if (!confirm('Are you sure you want to delete this transaction?')) return;
     try {
-        const response = await fetch(`${API_BASE}/api/transactions/${id}`, {
-            method: 'DELETE'
-        });
-        
-        if (response.ok) {
-            alert('Transaction deleted!');
-            loadTransactions();
-        } else {
-            alert('Error deleting transaction');
-        }
-    } catch (error) {
-        console.error('Error:', error);
+        const res = await fetch(`${API_BASE}/api/transactions/${id}`, { method: 'DELETE' });
+        if (res.ok) loadTransactions();
+        else alert('Error deleting transaction');
+    } catch (err) {
+        console.error(err);
     }
 }
 
-// Close modal
-function closeModal() {
-    document.getElementById('edit-modal').style.display = 'none';
+// ── Modals ───────────────────────────────────────────────────
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
 }
 
-// Close modal on outside click
-window.onclick = function(event) {
-    const modal = document.getElementById('edit-modal');
-    if (event.target === modal) {
-        closeModal();
-    }
-}
+window.onclick = function (event) {
+    document.querySelectorAll('.modal').forEach(modal => {
+        if (event.target === modal) modal.style.display = 'none';
+    });
+};
 
-// Set today's date as default
+// ── Init ─────────────────────────────────────────────────────
 document.getElementById('trans-date').valueAsDate = new Date();
 
-// Initialize
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const dateEl = document.getElementById('header-date');
     if (dateEl) {
         const now = new Date();
-        dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        dateEl.textContent = now.toLocaleDateString('en-US', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
     }
     loadCategories();
+    loadWallets();
     loadDashboard();
 });

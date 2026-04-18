@@ -706,4 +706,217 @@ form { max-width: 640px; }
 
   /* Add New button full width */
   .btn-primary { width: 100%; text-align: center; }
+
+  /* Wallet strip on mobile */
+  .wallet-strip .card { min-width: 140px; padding: 14px 12px; }
+  .wallet-strip .card h3 { font-size: 0.72rem; }
+  .wallet-strip .card .amount { font-size: 1.1rem; }
+
+  /* Wallet grid on mobile */
+  .wallets-grid { grid-template-columns: 1fr; }
+
+  /* Debt tables on mobile */
+  .debts-block { margin-bottom: 24px; }
+}
+
+/* ── Positive / Negative ── */
+.positive { color: var(--green); font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+.negative { color: var(--red);   font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+
+/* ── Wallet Strip ── */
+.wallet-strip {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  margin-bottom: 24px;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.wallet-strip::-webkit-scrollbar { display: none; }
+.wallet-strip:empty { margin-bottom: 0; }
+
+.wallet-strip .card {
+  min-width: 160px;
+  flex-shrink: 0;
+  cursor: default;
+}
+.wallet-strip .card::before { background: var(--gold); }
+
+.wallet-type {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+
+/* ── Debt Summary Bar ── */
+.debt-summary-bar {
+  display: flex;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 40px;
+}
+.debt-summary-bar:empty { display: none; margin-bottom: 0; }
+
+.debt-summary-item {
+  background: var(--surface);
+  padding: 16px 24px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.debt-summary-item:hover { background: var(--surface-2); }
+
+.debt-label {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.debt-amount {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+.debt-summary-item.owed-by-me .debt-amount { color: var(--red); }
+.debt-summary-item.owed-to-me .debt-amount { color: var(--green); }
+
+/* ── Section Header ── */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.section-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.6rem;
+  font-weight: 400;
+  color: var(--text);
+}
+
+/* ── Secondary Button ── */
+.btn-secondary {
+  padding: 9px 20px;
+  background: none;
+  color: var(--gold);
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-secondary:hover {
+  background: var(--gold);
+  color: #0c0c10;
+}
+
+/* ── Wallet Cards Grid ── */
+.wallets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.wallet-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  position: relative;
+  transition: background 0.15s;
+}
+.wallet-card:hover { background: var(--surface-2); }
+.wallet-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--gold);
+  border-radius: 12px 12px 0 0;
+}
+
+.wallet-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.wallet-type-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--gold);
+  background: rgba(212, 168, 83, 0.12);
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.wallet-card-actions { display: flex; gap: 6px; }
+
+.wallet-card-name {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.wallet-card-balance {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.wallet-card-currency {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Debts Tab ── */
+.debts-block {
+  margin-bottom: 40px;
+}
+
+.debts-subtitle {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 16px;
+}
+
+.debt-row-paid { opacity: 0.45; }
+
+.badge.paid        { background: rgba(107,114,128,0.2); color: #6b7280; }
+.badge.active-debt { background: var(--red-dim); color: var(--red); }
+
+/* ── Empty states ── */
+.empty-row {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  padding: 32px 14px !important;
+}
+
+.empty-state {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  padding: 48px 0;
+  text-align: center;
 }

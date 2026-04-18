@@ -29,9 +29,33 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
-# Pydantic models
+def run_migrations(conn):
+    cursor = conn.cursor()
+    # Add wallet_id to transactions if not present
+    cursor.execute("PRAGMA table_info(transactions)")
+    cols = {row['name'] for row in cursor.fetchall()}
+    if 'wallet_id' not in cols:
+        cursor.execute("ALTER TABLE transactions ADD COLUMN wallet_id INTEGER REFERENCES wallets(id)")
+    conn.commit()
+
+@app.on_event("startup")
+async def startup():
+    conn = get_db()
+    schema_path = Path(__file__).parent.parent / "data" / "schema.sql"
+    if schema_path.exists():
+        with open(schema_path) as f:
+            sql = f.read()
+        # Run migrations (add missing columns) before the full schema so
+        # indexes that reference new columns don't fail on existing DBs
+        run_migrations(conn)
+        conn.executescript(sql)
+    conn.close()
+
+# --- Pydantic models ---
+
 class Transaction(BaseModel):
     id: Optional[int] = None
     date: str
@@ -42,6 +66,7 @@ class Transaction(BaseModel):
     category_sub: str
     note: Optional[str] = ""
     source: str = "app"
+    wallet_id: Optional[int] = None
 
 class TransactionUpdate(BaseModel):
     date: Optional[str] = None
@@ -51,29 +76,57 @@ class TransactionUpdate(BaseModel):
     category_main: Optional[str] = None
     category_sub: Optional[str] = None
     note: Optional[str] = None
+    wallet_id: Optional[int] = None
 
-# Routes
+class WalletCreate(BaseModel):
+    name: str
+    type: str
+    initial_balance: int = 0
+    currency: str = "CLP"
+
+class WalletUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+
+class DebtCreate(BaseModel):
+    direction: str
+    counterpart_name: str
+    total_amount: int
+    installments: int = 1
+    due_date: Optional[str] = None
+    notes: Optional[str] = ""
+
+class DebtPaymentCreate(BaseModel):
+    amount: int
+    payment_date: str
+    wallet_id: Optional[int] = None
+    installment_number: Optional[int] = None
+    notes: Optional[str] = ""
+
+class DebtUpdate(BaseModel):
+    counterpart_name: Optional[str] = None
+    due_date: Optional[str] = None
+    notes: Optional[str] = None
+
+# --- Routes ---
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the main dashboard"""
     with open(TEMPLATES_DIR / "index.html", "r") as f:
         return f.read()
 
 @app.get("/api/dashboard")
 async def get_dashboard():
-    """Get dashboard summary data"""
     conn = get_db()
     cursor = conn.cursor()
-    
-    # Summary by type
+
     cursor.execute("""
         SELECT type, COUNT(*) as count, SUM(amount) as total
         FROM transactions
         GROUP BY type
     """)
     summary = {row['type']: {'count': row['count'], 'total': row['total']} for row in cursor.fetchall()}
-    
-    # Expenses by category
+
     cursor.execute("""
         SELECT category_main, SUM(amount) as total, COUNT(*) as count
         FROM transactions
@@ -82,8 +135,7 @@ async def get_dashboard():
         ORDER BY total DESC
     """)
     expenses_by_category = [dict(row) for row in cursor.fetchall()]
-    
-    # Income by category
+
     cursor.execute("""
         SELECT category_main, SUM(amount) as total, COUNT(*) as count
         FROM transactions
@@ -92,18 +144,16 @@ async def get_dashboard():
         ORDER BY total DESC
     """)
     income_by_category = [dict(row) for row in cursor.fetchall()]
-    
-    # Recent transactions
+
     cursor.execute("""
         SELECT * FROM transactions
         ORDER BY date DESC, id DESC
         LIMIT 10
     """)
     recent = [dict(row) for row in cursor.fetchall()]
-    
-    # Monthly totals (last 6 months)
+
     cursor.execute("""
-        SELECT substr(date, 1, 7) as month, 
+        SELECT substr(date, 1, 7) as month,
                SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
                SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
         FROM transactions
@@ -112,15 +162,44 @@ async def get_dashboard():
         LIMIT 6
     """)
     monthly = [dict(row) for row in cursor.fetchall()]
-    
+
+    # Wallets with computed current balance
+    cursor.execute("""
+        SELECT w.id, w.name, w.type, w.currency,
+               (w.initial_balance
+                + COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END), 0)
+                - COALESCE(SUM(CASE WHEN t.type IN ('expense','investment') THEN t.amount ELSE 0 END), 0)
+               ) AS current_balance
+        FROM wallets w
+        LEFT JOIN transactions t ON t.wallet_id = w.id
+        WHERE w.is_active = 1
+        GROUP BY w.id
+        ORDER BY w.id
+    """)
+    wallets = [dict(row) for row in cursor.fetchall()]
+
+    # Debt summary
+    cursor.execute("""
+        SELECT
+            COALESCE(SUM(CASE WHEN direction='owed_by_me' THEN remaining_amount ELSE 0 END), 0) AS total_owed_by_me,
+            COALESCE(SUM(CASE WHEN direction='owed_to_me' THEN remaining_amount ELSE 0 END), 0) AS total_owed_to_me,
+            COUNT(*) AS active_count
+        FROM debts
+        WHERE status = 'active'
+    """)
+    debt_row = cursor.fetchone()
+    debt_summary = dict(debt_row) if debt_row else {"total_owed_by_me": 0, "total_owed_to_me": 0, "active_count": 0}
+
     conn.close()
-    
+
     return {
         "summary": summary,
         "expenses_by_category": expenses_by_category,
         "income_by_category": income_by_category,
         "recent_transactions": recent,
-        "monthly_trend": monthly
+        "monthly_trend": monthly,
+        "wallets": wallets,
+        "debt_summary": debt_summary
     }
 
 @app.get("/api/transactions")
@@ -132,39 +211,33 @@ async def get_transactions(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None)
 ):
-    """Get paginated transactions with optional filters"""
     conn = get_db()
     cursor = conn.cursor()
-    
+
     query = "SELECT * FROM transactions WHERE 1=1"
     params = []
-    
+
     if type:
         query += " AND type = ?"
         params.append(type)
-    
     if category:
         query += " AND category_main = ?"
         params.append(category)
-    
     if start_date:
         query += " AND date >= ?"
         params.append(start_date)
-    
     if end_date:
         query += " AND date <= ?"
         params.append(end_date)
-    
+
     query += " ORDER BY date DESC, id DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
-    
+
     cursor.execute(query, params)
     transactions = [dict(row) for row in cursor.fetchall()]
-    
-    # Get total count for pagination
+
     count_query = "SELECT COUNT(*) FROM transactions WHERE 1=1"
     count_params = params[:-2]
-    
     if type:
         count_query += " AND type = ?"
     if category:
@@ -173,144 +246,299 @@ async def get_transactions(
         count_query += " AND date >= ?"
     if end_date:
         count_query += " AND date <= ?"
-    
+
     cursor.execute(count_query, count_params)
     total = cursor.fetchone()[0]
-    
+
     conn.close()
-    
-    return {
-        "transactions": transactions,
-        "total": total,
-        "limit": limit,
-        "offset": offset
-    }
+    return {"transactions": transactions, "total": total, "limit": limit, "offset": offset}
 
 @app.get("/api/transactions/{transaction_id}")
 async def get_transaction(transaction_id: int):
-    """Get a single transaction by ID"""
     conn = get_db()
     cursor = conn.cursor()
-    
     cursor.execute("SELECT * FROM transactions WHERE id = ?", (transaction_id,))
     row = cursor.fetchone()
     conn.close()
-    
     if not row:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
     return dict(row)
 
 @app.post("/api/transactions")
 async def create_transaction(transaction: Transaction):
-    """Create a new transaction"""
     conn = get_db()
     cursor = conn.cursor()
-    
     cursor.execute("""
-        INSERT INTO transactions (date, amount, currency, type, category_main, category_sub, note, source)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (transaction.date, transaction.amount, transaction.currency, 
-          transaction.type, transaction.category_main, transaction.category_sub, 
-          transaction.note, transaction.source))
-    
+        INSERT INTO transactions (date, amount, currency, type, category_main, category_sub, note, source, wallet_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (transaction.date, transaction.amount, transaction.currency,
+          transaction.type, transaction.category_main, transaction.category_sub,
+          transaction.note, transaction.source, transaction.wallet_id))
     transaction_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    
     return {"id": transaction_id, "message": "Transaction created successfully"}
 
 @app.put("/api/transactions/{transaction_id}")
 async def update_transaction(transaction_id: int, update: TransactionUpdate):
-    """Update an existing transaction"""
     conn = get_db()
     cursor = conn.cursor()
-    
     cursor.execute("SELECT id FROM transactions WHERE id = ?", (transaction_id,))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     updates = []
     params = []
-    
-    if update.date is not None:
-        updates.append("date = ?")
-        params.append(update.date)
-    if update.amount is not None:
-        updates.append("amount = ?")
-        params.append(update.amount)
-    if update.currency is not None:
-        updates.append("currency = ?")
-        params.append(update.currency)
-    if update.type is not None:
-        updates.append("type = ?")
-        params.append(update.type)
-    if update.category_main is not None:
-        updates.append("category_main = ?")
-        params.append(update.category_main)
-    if update.category_sub is not None:
-        updates.append("category_sub = ?")
-        params.append(update.category_sub)
-    if update.note is not None:
-        updates.append("note = ?")
-        params.append(update.note)
-    
+    for field, col in [('date','date'), ('amount','amount'), ('currency','currency'),
+                       ('type','type'), ('category_main','category_main'),
+                       ('category_sub','category_sub'), ('note','note'), ('wallet_id','wallet_id')]:
+        val = getattr(update, field)
+        if val is not None:
+            updates.append(f"{col} = ?")
+            params.append(val)
+
     if not updates:
         conn.close()
         return {"message": "No fields to update"}
-    
+
     query = f"UPDATE transactions SET {', '.join(updates)} WHERE id = ?"
     params.append(transaction_id)
-    
     cursor.execute(query, params)
     conn.commit()
     conn.close()
-    
     return {"message": "Transaction updated successfully"}
 
 @app.delete("/api/transactions/{transaction_id}")
 async def delete_transaction(transaction_id: int):
-    """Delete a transaction"""
     conn = get_db()
     cursor = conn.cursor()
-    
     cursor.execute("SELECT id FROM transactions WHERE id = ?", (transaction_id,))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
     cursor.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
     conn.commit()
     conn.close()
-    
     return {"message": "Transaction deleted successfully"}
 
 @app.get("/api/categories")
 async def get_categories():
-    """Get all available categories"""
     conn = get_db()
     cursor = conn.cursor()
-    
     cursor.execute("""
-        SELECT main_category, sub_category, type 
-        FROM categories 
+        SELECT main_category, sub_category, type
+        FROM categories
         WHERE is_active = 1
         ORDER BY main_category, sub_category
     """)
-    
     categories = {}
     for row in cursor.fetchall():
         main = row['main_category']
         if main not in categories:
             categories[main] = []
-        categories[main].append({
-            "sub": row['sub_category'],
-            "type": row['type']
-        })
-    
+        categories[main].append({"sub": row['sub_category'], "type": row['type']})
     conn.close()
     return categories
+
+# --- Wallets ---
+
+@app.get("/api/wallets")
+async def get_wallets():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT w.id, w.name, w.type, w.currency, w.initial_balance, w.created_at,
+               (w.initial_balance
+                + COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END), 0)
+                - COALESCE(SUM(CASE WHEN t.type IN ('expense','investment') THEN t.amount ELSE 0 END), 0)
+               ) AS current_balance
+        FROM wallets w
+        LEFT JOIN transactions t ON t.wallet_id = w.id
+        WHERE w.is_active = 1
+        GROUP BY w.id
+        ORDER BY w.id
+    """)
+    wallets = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return wallets
+
+@app.post("/api/wallets")
+async def create_wallet(wallet: WalletCreate):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO wallets (name, type, initial_balance, currency)
+        VALUES (?, ?, ?, ?)
+    """, (wallet.name, wallet.type, wallet.initial_balance, wallet.currency))
+    wallet_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return {"id": wallet_id, "message": "Wallet created successfully"}
+
+@app.put("/api/wallets/{wallet_id}")
+async def update_wallet(wallet_id: int, update: WalletUpdate):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM wallets WHERE id = ? AND is_active = 1", (wallet_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Wallet not found")
+
+    updates = []
+    params = []
+    if update.name is not None:
+        updates.append("name = ?")
+        params.append(update.name)
+    if update.type is not None:
+        updates.append("type = ?")
+        params.append(update.type)
+
+    if not updates:
+        conn.close()
+        return {"message": "No fields to update"}
+
+    params.append(wallet_id)
+    cursor.execute(f"UPDATE wallets SET {', '.join(updates)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+    return {"message": "Wallet updated successfully"}
+
+@app.delete("/api/wallets/{wallet_id}")
+async def delete_wallet(wallet_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM wallets WHERE id = ? AND is_active = 1", (wallet_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    cursor.execute("UPDATE wallets SET is_active = 0 WHERE id = ?", (wallet_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Wallet deactivated"}
+
+# --- Debts ---
+
+@app.get("/api/debts")
+async def get_debts(status: Optional[str] = Query(None)):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM debts"
+    params = []
+    if status:
+        query += " WHERE status = ?"
+        params.append(status)
+    query += " ORDER BY created_at DESC"
+
+    cursor.execute(query, params)
+    debts = [dict(row) for row in cursor.fetchall()]
+
+    # Attach payments to each debt
+    for debt in debts:
+        cursor.execute("""
+            SELECT * FROM debt_payments WHERE debt_id = ? ORDER BY payment_date DESC
+        """, (debt['id'],))
+        debt['payments'] = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+    return debts
+
+@app.post("/api/debts")
+async def create_debt(debt: DebtCreate):
+    if debt.direction not in ('owed_by_me', 'owed_to_me'):
+        raise HTTPException(status_code=400, detail="direction must be 'owed_by_me' or 'owed_to_me'")
+
+    installment_amount = debt.total_amount // debt.installments if debt.installments > 1 else None
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO debts (direction, counterpart_name, total_amount, remaining_amount,
+                           installments, installment_amount, due_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (debt.direction, debt.counterpart_name, debt.total_amount, debt.total_amount,
+          debt.installments, installment_amount, debt.due_date, debt.notes))
+    debt_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return {"id": debt_id, "message": "Debt created successfully"}
+
+@app.put("/api/debts/{debt_id}")
+async def update_debt(debt_id: int, update: DebtUpdate):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM debts WHERE id = ?", (debt_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Debt not found")
+
+    updates = []
+    params = []
+    if update.counterpart_name is not None:
+        updates.append("counterpart_name = ?")
+        params.append(update.counterpart_name)
+    if update.due_date is not None:
+        updates.append("due_date = ?")
+        params.append(update.due_date)
+    if update.notes is not None:
+        updates.append("notes = ?")
+        params.append(update.notes)
+
+    if not updates:
+        conn.close()
+        return {"message": "No fields to update"}
+
+    params.append(debt_id)
+    cursor.execute(f"UPDATE debts SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+    return {"message": "Debt updated successfully"}
+
+@app.post("/api/debts/{debt_id}/payments")
+async def record_debt_payment(debt_id: int, payment: DebtPaymentCreate):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM debts WHERE id = ?", (debt_id,))
+    debt = cursor.fetchone()
+    if not debt:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Debt not found")
+
+    if payment.amount > debt['remaining_amount']:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Payment exceeds remaining amount")
+
+    # Create linked transaction
+    tx_type = 'expense' if debt['direction'] == 'owed_by_me' else 'income'
+    cursor.execute("""
+        INSERT INTO transactions (date, amount, currency, type, category_main, category_sub,
+                                  note, source, wallet_id)
+        VALUES (?, ?, 'CLP', ?, 'Deuda', 'Pago', ?, 'debt', ?)
+    """, (payment.payment_date, payment.amount, tx_type,
+          payment.notes or f"Pago deuda #{debt_id}", payment.wallet_id))
+    transaction_id = cursor.lastrowid
+
+    # Record the payment
+    cursor.execute("""
+        INSERT INTO debt_payments (debt_id, transaction_id, amount, payment_date,
+                                   installment_number, notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (debt_id, transaction_id, payment.amount, payment.payment_date,
+          payment.installment_number, payment.notes))
+
+    # Update remaining amount
+    new_remaining = debt['remaining_amount'] - payment.amount
+    new_status = 'paid' if new_remaining <= 0 else 'active'
+    cursor.execute("""
+        UPDATE debts SET remaining_amount = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (new_remaining, new_status, debt_id))
+
+    conn.commit()
+    conn.close()
+    return {"message": "Payment recorded", "remaining_amount": new_remaining, "status": new_status}
 
 if __name__ == "__main__":
     import uvicorn

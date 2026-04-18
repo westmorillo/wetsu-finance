@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wetsu Finance Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=9">
+    <link rel="stylesheet" href="/static/style.css?v=10">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -20,6 +20,8 @@
         <nav class="tabs">
             <button class="tab-btn active" onclick="showTab('dashboard')">Dashboard</button>
             <button class="tab-btn" onclick="showTab('transactions')">Transactions</button>
+            <button class="tab-btn" onclick="showTab('carteras')">Carteras</button>
+            <button class="tab-btn" onclick="showTab('deudas')">Deudas</button>
             <button class="tab-btn" onclick="showTab('add')">Add New</button>
         </nav>
 
@@ -46,6 +48,12 @@
                     <div class="amount" id="net-balance">$0</div>
                 </div>
             </div>
+
+            <!-- Wallet strip -->
+            <div id="wallet-strip" class="wallet-strip"></div>
+
+            <!-- Debt summary bar -->
+            <div id="debt-summary-bar" class="debt-summary-bar"></div>
 
             <div class="charts-row">
                 <div class="chart-container">
@@ -119,6 +127,63 @@
             </div>
         </div>
 
+        <!-- Carteras Tab -->
+        <div id="carteras" class="tab-content">
+            <div class="section-header">
+                <h2 class="section-title">Carteras</h2>
+                <button class="btn-secondary" onclick="openWalletModal()">+ Nueva Cartera</button>
+            </div>
+            <div id="wallets-grid" class="wallets-grid"></div>
+        </div>
+
+        <!-- Deudas Tab -->
+        <div id="deudas" class="tab-content">
+            <div class="section-header">
+                <h2 class="section-title">Gestión de Deudas</h2>
+                <button class="btn-secondary" onclick="openDebtModal()">+ Nueva Deuda</button>
+            </div>
+
+            <div class="debts-block">
+                <h3 class="debts-subtitle">Debo</h3>
+                <div class="table-scroll">
+                    <table id="debts-owed-by-me-table">
+                        <thead>
+                            <tr>
+                                <th>Acreedor</th>
+                                <th>Total</th>
+                                <th>Restante</th>
+                                <th>Cuotas</th>
+                                <th>Vence</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody><tr><td colspan="7" class="empty-row">Sin deudas activas</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="debts-block">
+                <h3 class="debts-subtitle">Me deben</h3>
+                <div class="table-scroll">
+                    <table id="debts-owed-to-me-table">
+                        <thead>
+                            <tr>
+                                <th>Deudor</th>
+                                <th>Total</th>
+                                <th>Restante</th>
+                                <th>Cuotas</th>
+                                <th>Vence</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody><tr><td colspan="7" class="empty-row">Sin préstamos activos</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Add Transaction Tab -->
         <div id="add" class="tab-content">
             <form id="transaction-form">
@@ -143,9 +208,9 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Currency</label>
-                        <select id="trans-currency">
-                            <option value="CLP">CLP</option>
+                        <label>Cartera</label>
+                        <select id="trans-wallet">
+                            <option value="">Sin cartera</option>
                         </select>
                     </div>
                 </div>
@@ -175,10 +240,10 @@
         </div>
     </div>
 
-    <!-- Edit Modal -->
+    <!-- Edit Transaction Modal -->
     <div id="edit-modal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeModal()">&times;</span>
+            <span class="close" onclick="closeModal('edit-modal')">&times;</span>
             <h2>Edit Transaction</h2>
             <form id="edit-form">
                 <input type="hidden" id="edit-id">
@@ -202,25 +267,146 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Main Category</label>
-                        <input type="text" id="edit-main-cat" required>
+                        <label>Cartera</label>
+                        <select id="edit-wallet">
+                            <option value="">Sin cartera</option>
+                        </select>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
+                        <label>Main Category</label>
+                        <input type="text" id="edit-main-cat" required>
+                    </div>
+                    <div class="form-group">
                         <label>Subcategory</label>
                         <input type="text" id="edit-sub-cat" required>
                     </div>
-                    <div class="form-group">
-                        <label>Note</label>
-                        <input type="text" id="edit-note">
-                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Note</label>
+                    <input type="text" id="edit-note">
                 </div>
                 <button type="submit" class="btn-primary">Save Changes</button>
             </form>
         </div>
     </div>
 
-    <script src="/static/app.js?v=3"></script>
+    <!-- New / Edit Wallet Modal -->
+    <div id="new-wallet-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('new-wallet-modal')">&times;</span>
+            <h2 id="wallet-modal-title">Nueva Cartera</h2>
+            <form id="wallet-form">
+                <input type="hidden" id="wallet-edit-id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nombre</label>
+                        <input type="text" id="wallet-name" required placeholder="Ej: Cuenta BCI">
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo</label>
+                        <select id="wallet-type" required>
+                            <option value="Débito">Débito</option>
+                            <option value="Tarjeta Crédito">Tarjeta Crédito</option>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Otra">Otra</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="wallet-balance-row" class="form-row">
+                    <div class="form-group">
+                        <label>Saldo Inicial (CLP)</label>
+                        <input type="number" id="wallet-initial-balance" value="0" min="0">
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary">Guardar Cartera</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- New Debt Modal -->
+    <div id="new-debt-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('new-debt-modal')">&times;</span>
+            <h2>Nueva Deuda</h2>
+            <form id="debt-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Dirección</label>
+                        <select id="debt-direction" required>
+                            <option value="owed_by_me">Debo (yo debo)</option>
+                            <option value="owed_to_me">Me deben</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Nombre</label>
+                        <input type="text" id="debt-counterpart" required placeholder="Acreedor o deudor">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Monto Total (CLP)</label>
+                        <input type="number" id="debt-amount" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Cuotas</label>
+                        <input type="number" id="debt-installments" value="1" min="1">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Vencimiento</label>
+                        <input type="date" id="debt-due-date">
+                    </div>
+                    <div class="form-group">
+                        <label>Notas</label>
+                        <input type="text" id="debt-notes" placeholder="Opcional...">
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary">Crear Deuda</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Debt Payment Modal -->
+    <div id="debt-payment-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('debt-payment-modal')">&times;</span>
+            <h2>Registrar Pago</h2>
+            <form id="payment-form">
+                <input type="hidden" id="payment-debt-id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Monto (CLP)</label>
+                        <input type="number" id="payment-amount" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Fecha</label>
+                        <input type="date" id="payment-date" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Cartera</label>
+                        <select id="payment-wallet">
+                            <option value="">Sin cartera</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>N° Cuota (opcional)</label>
+                        <input type="number" id="payment-installment" min="1" placeholder="-">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Notas</label>
+                    <input type="text" id="payment-notes" placeholder="Opcional...">
+                </div>
+                <button type="submit" class="btn-primary">Registrar Pago</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=4"></script>
 </body>
 </html>
