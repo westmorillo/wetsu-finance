@@ -196,6 +196,7 @@ async function loadTransactions() {
         const data = await response.json();
 
         const tbody = document.querySelector('#transactions-table tbody');
+        const walletMap = Object.fromEntries(wallets.map(w => [w.id, w.name]));
         tbody.innerHTML = data.transactions.map(t => `
             <tr>
                 <td class="col-id">${t.id}</td>
@@ -204,6 +205,7 @@ async function loadTransactions() {
                 <td>${t.category_main}</td>
                 <td class="col-subcat">${t.category_sub}</td>
                 <td>${t.note || '—'}</td>
+                <td class="col-wallet">${t.wallet_id ? (walletMap[t.wallet_id] || '—') : '—'}</td>
                 <td class="${t.type === 'income' ? 'positive' : 'negative'}">${formatCurrency(t.amount)}</td>
                 <td>
                     <button class="action-btn edit" onclick="editTransaction(${t.id})">Edit</button>

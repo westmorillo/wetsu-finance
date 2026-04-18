@@ -44,7 +44,7 @@ def run_migrations(conn):
 @app.on_event("startup")
 async def startup():
     conn = get_db()
-    schema_path = Path(__file__).parent.parent / "data" / "schema.sql"
+    schema_path = Path(__file__).parent / "data" / "schema.sql"
     if schema_path.exists():
         with open(schema_path) as f:
             sql = f.read()

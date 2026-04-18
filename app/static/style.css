@@ -628,7 +628,7 @@ form { max-width: 640px; }
   td { padding: 11px 10px; }
 
   /* Hide less-important columns on mobile */
-  .col-id, .col-subcat { display: none; }
+  .col-id, .col-subcat, .col-wallet { display: none; }
 
   .modal-content {
     margin: 10% auto;
