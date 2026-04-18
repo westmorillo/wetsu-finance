@@ -209,7 +209,7 @@ async def get_dashboard():
 
     # Wallets with computed current balance
     cursor.execute(f"""
-        SELECT w.id, w.name, w.type, w.currency,
+        SELECT w.id, w.name, w.type, w.currency, w.due_day,
                {_BALANCE_SQL} AS current_balance
         FROM wallets w
         LEFT JOIN transactions t ON t.wallet_id = w.id
@@ -389,7 +389,7 @@ async def get_wallets():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(f"""
-        SELECT w.id, w.name, w.type, w.currency, w.initial_balance, w.created_at,
+        SELECT w.id, w.name, w.type, w.currency, w.initial_balance, w.created_at, w.due_day,
                {_BALANCE_SQL} AS current_balance
         FROM wallets w
         LEFT JOIN transactions t ON t.wallet_id = w.id
@@ -431,7 +431,7 @@ async def update_wallet(wallet_id: int, update: WalletUpdate):
     if update.type is not None:
         updates.append("type = ?")
         params.append(update.type)
-    if update.due_day is not None:
+    if 'due_day' in (update.model_fields_set or set()):
         updates.append("due_day = ?")
         params.append(update.due_day)
 
