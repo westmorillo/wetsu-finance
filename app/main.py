@@ -114,7 +114,7 @@ class WalletUpdate(BaseModel):
     type: Optional[str] = None
 
 class WalletAdjustment(BaseModel):
-    target_balance: int
+    target_balance: int  # puede ser negativo (ej: saldo deudor en TC)
     date: str
     note: Optional[str] = ""
 
