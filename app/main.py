@@ -34,12 +34,37 @@ def get_db():
 
 def run_migrations(conn):
     cursor = conn.cursor()
-    # Add wallet_id to transactions if not present
     cursor.execute("PRAGMA table_info(transactions)")
     cols = {row['name'] for row in cursor.fetchall()}
     if 'wallet_id' not in cols:
         cursor.execute("ALTER TABLE transactions ADD COLUMN wallet_id INTEGER REFERENCES wallets(id)")
+    # Create transfers table if not present (not in original schema.sql)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS transfers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_wallet_id INTEGER NOT NULL REFERENCES wallets(id),
+            to_wallet_id   INTEGER NOT NULL REFERENCES wallets(id),
+            amount         INTEGER NOT NULL,
+            date           TEXT NOT NULL,
+            note           TEXT,
+            from_tx_id     INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+            to_tx_id       INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+            created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     conn.commit()
+
+# SQL fragment to compute current wallet balance (reused in multiple queries)
+_BALANCE_SQL = """
+    (w.initial_balance
+     + COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount
+                         WHEN t.type='transfer' AND t.category_sub='entrada' THEN t.amount
+                         ELSE 0 END), 0)
+     - COALESCE(SUM(CASE WHEN t.type IN ('expense','investment') THEN t.amount
+                         WHEN t.type='transfer' AND t.category_sub='salida' THEN t.amount
+                         ELSE 0 END), 0)
+    )
+"""
 
 @app.on_event("startup")
 async def startup():
@@ -113,6 +138,13 @@ class DebtUpdate(BaseModel):
     due_date: Optional[str] = None
     notes: Optional[str] = None
 
+class TransferCreate(BaseModel):
+    from_wallet_id: int
+    to_wallet_id: int
+    amount: int
+    date: str
+    note: Optional[str] = ""
+
 # --- Routes ---
 
 @app.get("/", response_class=HTMLResponse)
@@ -169,12 +201,9 @@ async def get_dashboard():
     monthly = [dict(row) for row in cursor.fetchall()]
 
     # Wallets with computed current balance
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT w.id, w.name, w.type, w.currency,
-               (w.initial_balance
-                + COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END), 0)
-                - COALESCE(SUM(CASE WHEN t.type IN ('expense','investment') THEN t.amount ELSE 0 END), 0)
-               ) AS current_balance
+               {_BALANCE_SQL} AS current_balance
         FROM wallets w
         LEFT JOIN transactions t ON t.wallet_id = w.id
         WHERE w.is_active = 1
@@ -354,10 +383,7 @@ async def get_wallets():
     cursor = conn.cursor()
     cursor.execute("""
         SELECT w.id, w.name, w.type, w.currency, w.initial_balance, w.created_at,
-               (w.initial_balance
-                + COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END), 0)
-                - COALESCE(SUM(CASE WHEN t.type IN ('expense','investment') THEN t.amount ELSE 0 END), 0)
-               ) AS current_balance
+               {_BALANCE_SQL} AS current_balance
         FROM wallets w
         LEFT JOIN transactions t ON t.wallet_id = w.id
         WHERE w.is_active = 1
@@ -428,12 +454,9 @@ async def adjust_wallet_balance(wallet_id: int, adjustment: WalletAdjustment):
     cursor = conn.cursor()
 
     # Get current computed balance
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT w.id, w.name,
-               (w.initial_balance
-                + COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END), 0)
-                - COALESCE(SUM(CASE WHEN t.type IN ('expense','investment') THEN t.amount ELSE 0 END), 0)
-               ) AS current_balance
+               {_BALANCE_SQL} AS current_balance
         FROM wallets w
         LEFT JOIN transactions t ON t.wallet_id = w.id
         WHERE w.id = ? AND w.is_active = 1
@@ -470,6 +493,94 @@ async def adjust_wallet_balance(wallet_id: int, adjustment: WalletAdjustment):
         "diff": diff,
         "transaction_type": tx_type
     }
+
+# --- Transfers ---
+
+@app.get("/api/transfers")
+async def get_transfers():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT tr.*,
+               wf.name AS from_wallet_name,
+               wt.name AS to_wallet_name
+        FROM transfers tr
+        JOIN wallets wf ON wf.id = tr.from_wallet_id
+        JOIN wallets wt ON wt.id = tr.to_wallet_id
+        ORDER BY tr.date DESC, tr.id DESC
+    """)
+    transfers = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return transfers
+
+@app.post("/api/transfers")
+async def create_transfer(transfer: TransferCreate):
+    if transfer.from_wallet_id == transfer.to_wallet_id:
+        raise HTTPException(status_code=400, detail="Las carteras de origen y destino deben ser diferentes")
+    if transfer.amount <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Validate both wallets exist
+    cursor.execute("SELECT id, name FROM wallets WHERE id IN (?, ?) AND is_active = 1",
+                   (transfer.from_wallet_id, transfer.to_wallet_id))
+    found = cursor.fetchall()
+    if len(found) < 2:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Una o ambas carteras no existen")
+
+    wallet_names = {row['id']: row['name'] for row in found}
+    note = transfer.note or f"Transferencia: {wallet_names[transfer.from_wallet_id]} → {wallet_names[transfer.to_wallet_id]}"
+
+    # Salida — debits source wallet
+    cursor.execute("""
+        INSERT INTO transactions (date, amount, currency, type, category_main, category_sub,
+                                  note, source, wallet_id)
+        VALUES (?, ?, 'CLP', 'transfer', 'Transferencia', 'salida', ?, 'app', ?)
+    """, (transfer.date, transfer.amount, note, transfer.from_wallet_id))
+    from_tx_id = cursor.lastrowid
+
+    # Entrada — credits destination wallet
+    cursor.execute("""
+        INSERT INTO transactions (date, amount, currency, type, category_main, category_sub,
+                                  note, source, wallet_id)
+        VALUES (?, ?, 'CLP', 'transfer', 'Transferencia', 'entrada', ?, 'app', ?)
+    """, (transfer.date, transfer.amount, note, transfer.to_wallet_id))
+    to_tx_id = cursor.lastrowid
+
+    # Link them in transfers table
+    cursor.execute("""
+        INSERT INTO transfers (from_wallet_id, to_wallet_id, amount, date, note, from_tx_id, to_tx_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (transfer.from_wallet_id, transfer.to_wallet_id, transfer.amount,
+          transfer.date, note, from_tx_id, to_tx_id))
+    transfer_id = cursor.lastrowid
+
+    conn.commit()
+    conn.close()
+    return {"id": transfer_id, "from_tx_id": from_tx_id, "to_tx_id": to_tx_id,
+            "message": "Transferencia registrada"}
+
+@app.delete("/api/transfers/{transfer_id}")
+async def delete_transfer(transfer_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transfers WHERE id = ?", (transfer_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Transferencia no encontrada")
+
+    # Delete both linked transactions
+    for tx_id in [row['from_tx_id'], row['to_tx_id']]:
+        if tx_id:
+            cursor.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+    cursor.execute("DELETE FROM transfers WHERE id = ?", (transfer_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Transferencia eliminada"}
 
 # --- Debts ---
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wetsu Finance Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=12">
+    <link rel="stylesheet" href="/static/style.css?v=13">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -132,9 +132,14 @@
         <div id="carteras" class="tab-content">
             <div class="section-header">
                 <h2 class="section-title">Carteras</h2>
-                <button class="btn-secondary" onclick="openWalletModal()">+ Nueva Cartera</button>
+                <div class="section-actions">
+                    <button class="btn-secondary" onclick="openTransferModal()">⇄ Transferir</button>
+                    <button class="btn-secondary" onclick="openWalletModal()">+ Nueva Cartera</button>
+                </div>
             </div>
             <div id="wallets-grid" class="wallets-grid"></div>
+
+            <div class="transfers-history" id="transfers-history"></div>
         </div>
 
         <!-- Deudas Tab -->
@@ -293,6 +298,46 @@
         </div>
     </div>
 
+    <!-- Transfer Modal -->
+    <div id="transfer-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('transfer-modal')">&times;</span>
+            <h2>Nueva Transferencia</h2>
+            <form id="transfer-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Desde</label>
+                        <select id="transfer-from" required>
+                            <option value="">Seleccionar cartera...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Hacia</label>
+                        <select id="transfer-to" required>
+                            <option value="">Seleccionar cartera...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Monto (CLP)</label>
+                        <input type="number" id="transfer-amount" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Fecha</label>
+                        <input type="date" id="transfer-date" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Nota (opcional)</label>
+                    <input type="text" id="transfer-note" placeholder="Ej: Pago tarjeta de crédito">
+                </div>
+                <div id="transfer-preview" class="transfer-preview"></div>
+                <button type="submit" class="btn-primary">Registrar Transferencia</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Wallet Balance Adjustment Modal -->
     <div id="adjust-wallet-modal" class="modal">
         <div class="modal-content">
@@ -439,6 +484,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=6"></script>
+    <script src="/static/app.js?v=7"></script>
 </body>
 </html>

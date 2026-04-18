@@ -911,6 +911,59 @@ form { max-width: 640px; }
   color: var(--gold);
 }
 
+/* ── Section actions (multiple buttons in header) ── */
+.section-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ── Transfer preview ── */
+.transfer-preview {
+  margin-bottom: 20px;
+  min-height: 24px;
+}
+
+.transfer-flow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.transfer-flow-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transfer-flow-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.transfer-flow-item .positive,
+.transfer-flow-item .negative {
+  font-size: 1rem;
+}
+
+.transfer-flow-result {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.transfer-flow-arrow {
+  font-size: 1.4rem;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+
 /* ── Adjust balance modal ── */
 .adjust-balance-display {
   display: flex;
@@ -964,6 +1017,7 @@ form { max-width: 640px; }
 
 .badge.paid        { background: rgba(107,114,128,0.2); color: #6b7280; }
 .badge.active-debt { background: var(--red-dim); color: var(--red); }
+.badge.transfer    { background: rgba(212,168,83,0.15); color: var(--gold); }
 
 /* ── Empty states ── */
 .empty-row {

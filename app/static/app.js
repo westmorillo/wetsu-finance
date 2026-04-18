@@ -288,6 +288,7 @@ function populateWalletSelects() {
 
 async function loadCarteras() {
     await loadWallets();
+    loadTransferHistory();
     const grid = document.getElementById('wallets-grid');
     if (!wallets.length) {
         grid.innerHTML = '<p class="empty-state">No hay carteras aún. Crea una con el botón de arriba.</p>';
@@ -401,6 +402,132 @@ document.getElementById('adjust-form')?.addEventListener('submit', async functio
         console.error(err);
     }
 });
+
+// ── Transfers ────────────────────────────────────────────────
+function openTransferModal() {
+    document.getElementById('transfer-form').reset();
+    document.getElementById('transfer-preview').innerHTML = '';
+    document.getElementById('transfer-date').valueAsDate = new Date();
+
+    // Populate both selects
+    ['transfer-from', 'transfer-to'].forEach(id => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = '<option value="">Seleccionar cartera...</option>';
+        wallets.forEach(w => {
+            const opt = document.createElement('option');
+            opt.value = w.id;
+            opt.textContent = `${w.name} — ${formatCurrency(w.current_balance)}`;
+            sel.appendChild(opt);
+        });
+    });
+
+    // Live preview
+    const updatePreview = () => {
+        const fromId = parseInt(document.getElementById('transfer-from').value);
+        const toId   = parseInt(document.getElementById('transfer-to').value);
+        const amount = parseInt(document.getElementById('transfer-amount').value) || 0;
+        const preview = document.getElementById('transfer-preview');
+
+        if (!fromId || !toId || !amount) { preview.innerHTML = ''; return; }
+        if (fromId === toId) {
+            preview.innerHTML = '<span class="negative">Las carteras deben ser diferentes</span>';
+            return;
+        }
+        const from = wallets.find(w => w.id === fromId);
+        const to   = wallets.find(w => w.id === toId);
+        preview.innerHTML = `
+            <div class="transfer-flow">
+                <div class="transfer-flow-item">
+                    <span class="transfer-flow-label">${from.name}</span>
+                    <span class="negative">−${formatCurrency(amount)}</span>
+                    <span class="transfer-flow-result">${formatCurrency(from.current_balance - amount)}</span>
+                </div>
+                <div class="transfer-flow-arrow">→</div>
+                <div class="transfer-flow-item">
+                    <span class="transfer-flow-label">${to.name}</span>
+                    <span class="positive">+${formatCurrency(amount)}</span>
+                    <span class="transfer-flow-result">${formatCurrency(to.current_balance + amount)}</span>
+                </div>
+            </div>
+        `;
+    };
+
+    document.getElementById('transfer-from').onchange   = updatePreview;
+    document.getElementById('transfer-to').onchange     = updatePreview;
+    document.getElementById('transfer-amount').oninput  = updatePreview;
+
+    document.getElementById('transfer-modal').style.display = 'block';
+}
+
+document.getElementById('transfer-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const fromId = parseInt(document.getElementById('transfer-from').value);
+    const toId   = parseInt(document.getElementById('transfer-to').value);
+    if (fromId === toId) { alert('Las carteras deben ser diferentes'); return; }
+
+    const body = {
+        from_wallet_id: fromId,
+        to_wallet_id:   toId,
+        amount:  parseInt(document.getElementById('transfer-amount').value),
+        date:    document.getElementById('transfer-date').value,
+        note:    document.getElementById('transfer-note').value
+    };
+    try {
+        const res = await fetch(`${API_BASE}/api/transfers`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            closeModal('transfer-modal');
+            loadCarteras();
+            loadDashboard();
+        } else {
+            alert(data.detail || 'Error al registrar transferencia');
+        }
+    } catch (err) { console.error(err); }
+});
+
+async function loadTransferHistory() {
+    try {
+        const res = await fetch(`${API_BASE}/api/transfers`);
+        const transfers = await res.json();
+        const container = document.getElementById('transfers-history');
+        if (!transfers.length) { container.innerHTML = ''; return; }
+
+        container.innerHTML = `
+            <h3 class="debts-subtitle" style="margin-top:40px">Historial de Transferencias</h3>
+            <div class="table-scroll">
+                <table>
+                    <thead><tr>
+                        <th>Fecha</th><th>Desde</th><th>Hacia</th>
+                        <th>Monto</th><th>Nota</th><th>Acciones</th>
+                    </tr></thead>
+                    <tbody>
+                        ${transfers.map(t => `
+                            <tr>
+                                <td>${formatDate(t.date)}</td>
+                                <td>${t.from_wallet_name}</td>
+                                <td>${t.to_wallet_name}</td>
+                                <td class="positive">${formatCurrency(t.amount)}</td>
+                                <td>${t.note || '—'}</td>
+                                <td><button class="action-btn delete" onclick="deleteTransfer(${t.id})">Eliminar</button></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (err) { console.error(err); }
+}
+
+async function deleteTransfer(id) {
+    if (!confirm('¿Eliminar esta transferencia? Se eliminarán las dos transacciones vinculadas.')) return;
+    try {
+        const res = await fetch(`${API_BASE}/api/transfers/${id}`, { method: 'DELETE' });
+        if (res.ok) { loadCarteras(); loadDashboard(); }
+        else alert('Error al eliminar transferencia');
+    } catch (err) { console.error(err); }
+}
 
 async function deactivateWallet(id) {
     if (!confirm('¿Desactivar esta cartera?')) return;
