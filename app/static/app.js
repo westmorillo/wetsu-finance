@@ -304,7 +304,10 @@ async function loadCarteras() {
             </div>
             <div class="wallet-card-name">${w.name}</div>
             <div class="wallet-card-balance">${formatCurrency(w.current_balance)}</div>
-            <div class="wallet-card-currency">${w.currency}</div>
+            <div class="wallet-card-footer">
+                <span class="wallet-card-currency">${w.currency}</span>
+                <button class="btn-adjust" onclick="openAdjustModal(${w.id}, ${w.current_balance}, '${w.name}')">Ajustar saldo</button>
+            </div>
         </div>
     `).join('');
 }
@@ -344,6 +347,55 @@ document.getElementById('wallet-form')?.addEventListener('submit', async functio
             loadWallets();
         } else {
             alert('Error guardando cartera');
+        }
+    } catch (err) {
+        console.error(err);
+    }
+});
+
+function openAdjustModal(walletId, currentBalance, walletName) {
+    document.getElementById('adjust-wallet-id').value = walletId;
+    document.getElementById('adjust-current-balance').textContent = formatCurrency(currentBalance);
+    document.getElementById('adjust-target').value = '';
+    document.getElementById('adjust-note').value = '';
+    document.getElementById('adjust-diff-preview').innerHTML = '';
+    document.getElementById('adjust-date').valueAsDate = new Date();
+    document.getElementById('adjust-wallet-modal').style.display = 'block';
+
+    // Live diff preview
+    const targetInput = document.getElementById('adjust-target');
+    targetInput.oninput = function () {
+        const target = parseInt(this.value) || 0;
+        const diff = target - currentBalance;
+        const preview = document.getElementById('adjust-diff-preview');
+        if (!this.value) { preview.innerHTML = ''; return; }
+        const sign = diff > 0 ? '+' : '';
+        const cls  = diff > 0 ? 'positive' : diff < 0 ? 'negative' : '';
+        preview.innerHTML = diff === 0
+            ? `<span class="adjust-diff-zero">Sin cambios</span>`
+            : `<span class="${cls}">Se creará una transacción de ajuste de ${sign}${formatCurrency(Math.abs(diff))}</span>`;
+    };
+}
+
+document.getElementById('adjust-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const walletId = document.getElementById('adjust-wallet-id').value;
+    const body = {
+        target_balance: parseInt(document.getElementById('adjust-target').value),
+        date:           document.getElementById('adjust-date').value,
+        note:           document.getElementById('adjust-note').value
+    };
+    try {
+        const res = await fetch(`${API_BASE}/api/wallets/${walletId}/adjust`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            closeModal('adjust-wallet-modal');
+            loadCarteras();
+            loadDashboard();
+        } else {
+            alert(data.detail || 'Error al ajustar saldo');
         }
     } catch (err) {
         console.error(err);

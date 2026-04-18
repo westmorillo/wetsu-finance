@@ -88,6 +88,11 @@ class WalletUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
 
+class WalletAdjustment(BaseModel):
+    target_balance: int
+    date: str
+    note: Optional[str] = ""
+
 class DebtCreate(BaseModel):
     direction: str
     counterpart_name: str
@@ -416,6 +421,55 @@ async def delete_wallet(wallet_id: int):
     conn.commit()
     conn.close()
     return {"message": "Wallet deactivated"}
+
+@app.post("/api/wallets/{wallet_id}/adjust")
+async def adjust_wallet_balance(wallet_id: int, adjustment: WalletAdjustment):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get current computed balance
+    cursor.execute("""
+        SELECT w.id, w.name,
+               (w.initial_balance
+                + COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END), 0)
+                - COALESCE(SUM(CASE WHEN t.type IN ('expense','investment') THEN t.amount ELSE 0 END), 0)
+               ) AS current_balance
+        FROM wallets w
+        LEFT JOIN transactions t ON t.wallet_id = w.id
+        WHERE w.id = ? AND w.is_active = 1
+        GROUP BY w.id
+    """, (wallet_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Wallet not found")
+
+    current_balance = row["current_balance"]
+    diff = adjustment.target_balance - current_balance
+
+    if diff == 0:
+        conn.close()
+        return {"message": "No adjustment needed", "current_balance": current_balance, "diff": 0}
+
+    tx_type = "income" if diff > 0 else "expense"
+    note = adjustment.note or f"Ajuste de saldo — {row['name']}"
+
+    cursor.execute("""
+        INSERT INTO transactions (date, amount, currency, type, category_main, category_sub,
+                                  note, source, wallet_id)
+        VALUES (?, ?, 'CLP', ?, 'Ajuste', 'Ajuste de saldo', ?, 'adjustment', ?)
+    """, (adjustment.date, abs(diff), tx_type, note, wallet_id))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "message": "Balance adjusted",
+        "previous_balance": current_balance,
+        "new_balance": adjustment.target_balance,
+        "diff": diff,
+        "transaction_type": tx_type
+    }
 
 # --- Debts ---
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wetsu Finance Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=11">
+    <link rel="stylesheet" href="/static/style.css?v=12">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -293,6 +293,37 @@
         </div>
     </div>
 
+    <!-- Wallet Balance Adjustment Modal -->
+    <div id="adjust-wallet-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('adjust-wallet-modal')">&times;</span>
+            <h2>Ajustar Saldo</h2>
+            <form id="adjust-form">
+                <input type="hidden" id="adjust-wallet-id">
+                <div class="adjust-balance-display">
+                    <span class="adjust-label">Saldo actual</span>
+                    <span class="adjust-current" id="adjust-current-balance">$0</span>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Saldo Real (CLP)</label>
+                        <input type="number" id="adjust-target" required min="0" placeholder="Ingresa el saldo real">
+                    </div>
+                    <div class="form-group">
+                        <label>Fecha</label>
+                        <input type="date" id="adjust-date" required>
+                    </div>
+                </div>
+                <div class="adjust-diff-preview" id="adjust-diff-preview"></div>
+                <div class="form-group">
+                    <label>Nota (opcional)</label>
+                    <input type="text" id="adjust-note" placeholder="Ej: Conciliación bancaria abril">
+                </div>
+                <button type="submit" class="btn-primary">Aplicar Ajuste</button>
+            </form>
+        </div>
+    </div>
+
     <!-- New / Edit Wallet Modal -->
     <div id="new-wallet-modal" class="modal">
         <div class="modal-content">
@@ -408,6 +439,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/app.js?v=6"></script>
 </body>
 </html>

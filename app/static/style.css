@@ -880,11 +880,70 @@ form { max-width: 640px; }
   margin-bottom: 4px;
 }
 
+.wallet-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
 .wallet-card-currency {
   font-size: 0.72rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.btn-adjust {
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-adjust:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ── Adjust balance modal ── */
+.adjust-balance-display {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+.adjust-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+.adjust-current {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--gold);
+}
+.adjust-diff-preview {
+  min-height: 22px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  margin-bottom: 16px;
+}
+.adjust-diff-zero {
+  color: var(--text-muted);
 }
 
 /* ── Debts Tab ── */
