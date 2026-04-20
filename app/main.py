@@ -125,6 +125,11 @@ class WalletAdjustment(BaseModel):
     date: str
     note: Optional[str] = ""
 
+class CategoryCreate(BaseModel):
+    main_category: str
+    sub_category: str
+    type: str  # income, expense, investment
+
 class DebtCreate(BaseModel):
     direction: str
     counterpart_name: str
@@ -170,7 +175,7 @@ async def get_dashboard(month: Optional[str] = Query(None)):
     cursor.execute("""
         SELECT type, COUNT(*) as count, SUM(amount) as total
         FROM transactions
-        WHERE substr(date, 1, 7) = ?
+        WHERE substr(date, 1, 7) = ? AND source != 'adjustment'
         GROUP BY type
     """, (month,))
     summary = {row['type']: {'count': row['count'], 'total': row['total']} for row in cursor.fetchall()}
@@ -178,7 +183,7 @@ async def get_dashboard(month: Optional[str] = Query(None)):
     cursor.execute("""
         SELECT category_main, SUM(amount) as total, COUNT(*) as count
         FROM transactions
-        WHERE type = 'expense' AND substr(date, 1, 7) = ?
+        WHERE type = 'expense' AND substr(date, 1, 7) = ? AND source != 'adjustment'
         GROUP BY category_main
         ORDER BY total DESC
     """, (month,))
@@ -187,7 +192,7 @@ async def get_dashboard(month: Optional[str] = Query(None)):
     cursor.execute("""
         SELECT category_main, SUM(amount) as total, COUNT(*) as count
         FROM transactions
-        WHERE type = 'income' AND substr(date, 1, 7) = ?
+        WHERE type = 'income' AND substr(date, 1, 7) = ? AND source != 'adjustment'
         GROUP BY category_main
         ORDER BY total DESC
     """, (month,))
@@ -386,6 +391,27 @@ async def get_categories():
         categories[main].append({"sub": row['sub_category'], "type": row['type']})
     conn.close()
     return categories
+
+@app.post("/api/categories")
+async def create_category(cat: CategoryCreate):
+    if cat.type not in ('income', 'expense', 'investment'):
+        raise HTTPException(status_code=400, detail="type must be income, expense, or investment")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id FROM categories
+        WHERE main_category = ? AND sub_category = ? AND is_active = 1
+    """, (cat.main_category, cat.sub_category))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=409, detail="Category already exists")
+    cursor.execute("""
+        INSERT INTO categories (main_category, sub_category, type)
+        VALUES (?, ?, ?)
+    """, (cat.main_category, cat.sub_category, cat.type))
+    conn.commit()
+    conn.close()
+    return {"message": "Category created"}
 
 # --- Wallets ---
 

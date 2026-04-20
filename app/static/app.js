@@ -19,6 +19,7 @@ function showTab(tabName) {
     else if (tabName === 'transactions') { currentPage = 0; loadTransactions(); }
     else if (tabName === 'carteras')     loadCarteras();
     else if (tabName === 'deudas')       loadDeudas();
+    else if (tabName === 'categorias')   loadCategoriasTab();
 }
 
 // ── Formatters ──────────────────────────────────────────────
@@ -231,35 +232,69 @@ async function loadCategories() {
     try {
         const response = await fetch(`${API_BASE}/api/categories`);
         categories = await response.json();
-
-        const mainCatSelect   = document.getElementById('trans-main-cat');
-        const filterCatSelect = document.getElementById('filter-category');
-
-        Object.keys(categories).forEach(cat => {
-            [mainCatSelect, filterCatSelect].forEach(sel => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                sel.appendChild(opt);
-            });
-        });
+        populateCategorySelects();
     } catch (err) {
         console.error('Error loading categories:', err);
     }
 }
 
-document.getElementById('trans-main-cat')?.addEventListener('change', function () {
-    const subCatSelect = document.getElementById('trans-sub-cat');
-    subCatSelect.innerHTML = '<option value="">Select...</option>';
-    if (this.value && categories[this.value]) {
-        categories[this.value].forEach(sub => {
+function populateCategorySelects() {
+    const mainCatSelect   = document.getElementById('trans-main-cat');
+    const filterCatSelect = document.getElementById('filter-category');
+    const editMainCat     = document.getElementById('edit-main-cat');
+    const catMainSelect   = document.getElementById('cat-main-select');
+
+    [mainCatSelect, filterCatSelect].forEach(sel => {
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = sel === filterCatSelect
+            ? '<option value="">All Categories</option>'
+            : '<option value="">Select...</option>';
+        Object.keys(categories).forEach(cat => {
             const opt = document.createElement('option');
-            opt.value = sub.sub;
-            opt.textContent = sub.sub;
-            subCatSelect.appendChild(opt);
+            opt.value = cat; opt.textContent = cat;
+            sel.appendChild(opt);
+        });
+        if (cur) sel.value = cur;
+    });
+
+    if (editMainCat) {
+        const cur = editMainCat.value;
+        editMainCat.innerHTML = '<option value="">Select...</option>';
+        Object.keys(categories).forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat; opt.textContent = cat;
+            editMainCat.appendChild(opt);
+        });
+        if (cur) editMainCat.value = cur;
+    }
+
+    if (catMainSelect) {
+        catMainSelect.innerHTML = '<option value="">— Nueva categoría principal —</option>';
+        Object.keys(categories).forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat; opt.textContent = cat;
+            catMainSelect.appendChild(opt);
         });
     }
-});
+}
+
+function fillSubCats(mainCatId, subCatId, currentVal) {
+    const mainSel = document.getElementById(mainCatId);
+    const subSel  = document.getElementById(subCatId);
+    if (!mainSel || !subSel) return;
+    subSel.innerHTML = '<option value="">Select...</option>';
+    const subs = categories[mainSel.value] || [];
+    subs.forEach(sub => {
+        const opt = document.createElement('option');
+        opt.value = sub.sub; opt.textContent = sub.sub;
+        subSel.appendChild(opt);
+    });
+    if (currentVal) subSel.value = currentVal;
+}
+
+document.getElementById('trans-main-cat')?.addEventListener('change', () => fillSubCats('trans-main-cat', 'trans-sub-cat'));
+document.getElementById('edit-main-cat')?.addEventListener('change',  () => fillSubCats('edit-main-cat',  'edit-sub-cat'));
 
 // ── Wallets ─────────────────────────────────────────────────
 async function loadWallets() {
@@ -678,6 +713,72 @@ document.getElementById('payment-form')?.addEventListener('submit', async functi
     }
 });
 
+// ── Categorías Tab ───────────────────────────────────────────
+async function loadCategoriasTab() {
+    await loadCategories();
+    const container = document.getElementById('categories-list');
+    if (!container) return;
+
+    if (!Object.keys(categories).length) {
+        container.innerHTML = '<p class="empty-state">No hay categorías.</p>';
+        return;
+    }
+
+    container.innerHTML = Object.entries(categories).map(([main, subs]) => `
+        <div class="category-group">
+            <div class="category-group-header">${main}</div>
+            <div class="category-subs">
+                ${subs.map(s => `
+                    <span class="category-sub-badge badge ${s.type}">${s.sub}</span>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function openCategoryModal() {
+    document.getElementById('category-form').reset();
+    populateCategorySelects();
+    document.getElementById('new-category-modal').style.display = 'block';
+}
+
+document.getElementById('cat-main-select')?.addEventListener('change', function () {
+    const newInput = document.getElementById('cat-main-new');
+    newInput.value = '';
+    newInput.placeholder = this.value
+        ? `Agregar sub a "${this.value}" o escribe nueva categoría`
+        : 'O escribe una nueva...';
+});
+
+document.getElementById('category-form')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const mainSelect = document.getElementById('cat-main-select').value;
+    const mainNew    = document.getElementById('cat-main-new').value.trim();
+    const main       = mainNew || mainSelect;
+    if (!main) { alert('Ingresa o selecciona una categoría principal'); return; }
+
+    const body = {
+        main_category: main,
+        sub_category:  document.getElementById('cat-sub').value.trim(),
+        type:          document.getElementById('cat-type').value
+    };
+    try {
+        const res = await fetch(`${API_BASE}/api/categories`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (res.ok) {
+            closeModal('new-category-modal');
+            await loadCategories();
+            loadCategoriasTab();
+        } else {
+            const err = await res.json();
+            alert(err.detail || 'Error creando categoría');
+        }
+    } catch (err) {
+        console.error(err);
+    }
+});
+
 // ── Add Transaction ──────────────────────────────────────────
 document.getElementById('transaction-form')?.addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -717,13 +818,16 @@ async function editTransaction(id) {
         const res = await fetch(`${API_BASE}/api/transactions/${id}`);
         const t   = await res.json();
 
-        document.getElementById('edit-id').value       = t.id;
-        document.getElementById('edit-date').value     = t.date;
-        document.getElementById('edit-amount').value   = t.amount;
-        document.getElementById('edit-type').value     = t.type;
+        document.getElementById('edit-id').value     = t.id;
+        document.getElementById('edit-date').value   = t.date;
+        document.getElementById('edit-amount').value = t.amount;
+        document.getElementById('edit-type').value   = t.type;
+        document.getElementById('edit-note').value   = t.note || '';
+
+        // populate main cat dropdown then subcats
+        populateCategorySelects();
         document.getElementById('edit-main-cat').value = t.category_main;
-        document.getElementById('edit-sub-cat').value  = t.category_sub;
-        document.getElementById('edit-note').value     = t.note || '';
+        fillSubCats('edit-main-cat', 'edit-sub-cat', t.category_sub);
 
         populateWalletSelects();
         if (t.wallet_id) document.getElementById('edit-wallet').value = t.wallet_id;
