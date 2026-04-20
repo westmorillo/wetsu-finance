@@ -689,16 +689,6 @@ form { max-width: 640px; }
   #recent-table thead,
   #transactions-table thead { display: none; }
 
-  #recent-table tbody tr,
-  #transactions-table tbody tr {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    padding: 14px 0;
-    border-bottom: 1px solid var(--border);
-    gap: 4px 10px;
-  }
-
   #recent-table tbody tr:last-child,
   #transactions-table tbody tr:last-child { border-bottom: none; }
 
@@ -706,8 +696,8 @@ form { max-width: 640px; }
   #transactions-table td { border: none; padding: 0; font-size: 0.84rem; }
 
   /* recent-table: single line per row */
-  #recent-table tbody tr { flex-wrap: nowrap; align-items: center; gap: 8px; padding: 12px 0; }
-  #recent-table td:nth-child(1) { /* date */
+  #recent-table tbody tr { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  #recent-table td:nth-child(1) {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.68rem;
     color: var(--text-muted);
@@ -715,31 +705,76 @@ form { max-width: 640px; }
     flex-shrink: 0;
   }
   #recent-table td:nth-child(2) { font-weight: 500; font-size: 0.84rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #recent-table td:nth-child(3) { display: none; } /* hide note */
+  #recent-table td:nth-child(3) { display: none; }
   #recent-table td:nth-child(4) { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 0.82rem; white-space: nowrap; flex-shrink: 0; }
   #recent-table td:nth-child(5) { flex-shrink: 0; }
 
-  /* transactions-table columns: id | date | type | category | subcat | note | amount | actions */
-  #transactions-table td:nth-child(1) { display: none; } /* id */
-  #transactions-table td:nth-child(2) { /* date */
+  /* ── transactions-table: 2-line grid layout ──
+     Columns: id(1) date(2) type(3) category(4) subcat(5) note(6) wallet(7) amount(8) actions(9)
+     Line 1: [badge] [category]                [amount]
+     Line 2: [date]  [note truncated]          [edit/delete]
+  */
+  #transactions-table tbody tr {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    row-gap: 3px;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+
+  #transactions-table td:nth-child(1) { display: none; }
+  #transactions-table td:nth-child(5) { display: none; }
+  #transactions-table td:nth-child(7) { display: none; }
+
+  /* Row 1 */
+  #transactions-table td:nth-child(3) { grid-column: 1; grid-row: 1; }
+  #transactions-table td:nth-child(4) {
+    grid-column: 2; grid-row: 1;
+    font-weight: 600;
+    font-size: 0.88rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #transactions-table td:nth-child(8) {
+    grid-column: 3; grid-row: 1;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
+    font-weight: 700;
+    font-size: 0.88rem;
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  /* Row 2 */
+  #transactions-table td:nth-child(2) {
+    grid-column: 1; grid-row: 2;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
     color: var(--text-muted);
-    width: 100%;
-    order: 1;
     white-space: nowrap;
   }
-  #transactions-table td:nth-child(3) { order: 2; } /* type badge */
-  #transactions-table td:nth-child(4) { font-weight: 500; order: 3; flex: 1; } /* category */
-  #transactions-table td:nth-child(5) { display: none; } /* subcat */
-  #transactions-table td:nth-child(6) { color: var(--text-muted); font-size: 0.78rem; order: 5; width: 100%; } /* note */
-  #transactions-table td:nth-child(7) { /* amount */
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 600;
-    order: 4;
-    margin-left: auto;
+  #transactions-table td:nth-child(6) {
+    grid-column: 2; grid-row: 2;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  #transactions-table td:nth-child(8) { order: 6; width: 100%; padding-top: 4px; } /* actions */
+  #transactions-table td:nth-child(9) {
+    grid-column: 3; grid-row: 2;
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  #transactions-table td:nth-child(9) .action-btn {
+    font-size: 0.65rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
 
   /* Add New button full width */
   .btn-primary { width: 100%; text-align: center; }
