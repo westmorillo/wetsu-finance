@@ -36,7 +36,9 @@ function formatDate(dateStr) {
 // ── Dashboard ───────────────────────────────────────────────
 async function loadDashboard() {
     try {
-        const response = await fetch(`${API_BASE}/api/dashboard`);
+        const monthInput = document.getElementById('dashboard-month');
+        const month = monthInput.value;
+        const response = await fetch(`${API_BASE}/api/dashboard${month ? '?month=' + month : ''}`);
         const data = await response.json();
 
         const income     = data.summary.income     || { count: 0, total: 0 };
@@ -44,11 +46,11 @@ async function loadDashboard() {
         const investment = data.summary.investment || { count: 0, total: 0 };
 
         document.getElementById('total-income').textContent     = formatCurrency(income.total);
-        document.getElementById('income-count').textContent     = `${income.count} transactions`;
+        document.getElementById('income-count').textContent     = `${income.count} transacciones`;
         document.getElementById('total-expense').textContent    = formatCurrency(expense.total);
-        document.getElementById('expense-count').textContent    = `${expense.count} transactions`;
+        document.getElementById('expense-count').textContent    = `${expense.count} transacciones`;
         document.getElementById('total-investment').textContent = formatCurrency(investment.total);
-        document.getElementById('investment-count').textContent = `${investment.count} transactions`;
+        document.getElementById('investment-count').textContent = `${investment.count} transacciones`;
 
         const net = income.total - expense.total - investment.total;
         document.getElementById('net-balance').textContent = formatCurrency(net);
@@ -794,6 +796,13 @@ document.addEventListener('DOMContentLoaded', function () {
             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
         });
     }
+
+    const monthInput = document.getElementById('dashboard-month');
+    if (monthInput) {
+        const now = new Date();
+        monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+
     loadCategories();
     loadWallets();
     loadDashboard();

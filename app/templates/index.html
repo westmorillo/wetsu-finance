@@ -27,24 +27,28 @@
 
         <!-- Dashboard Tab -->
         <div id="dashboard" class="tab-content active">
+            <div class="dashboard-month-bar">
+                <label for="dashboard-month">Mes</label>
+                <input type="month" id="dashboard-month" onchange="loadDashboard()">
+            </div>
             <div class="summary-cards">
                 <div class="card income">
-                    <h3>Total Income</h3>
+                    <h3>Ingresos</h3>
                     <div class="amount" id="total-income">$0</div>
-                    <div class="count" id="income-count">0 transactions</div>
+                    <div class="count" id="income-count">0 transacciones</div>
                 </div>
                 <div class="card expense">
-                    <h3>Total Expenses</h3>
+                    <h3>Gastos</h3>
                     <div class="amount" id="total-expense">$0</div>
-                    <div class="count" id="expense-count">0 transactions</div>
+                    <div class="count" id="expense-count">0 transacciones</div>
                 </div>
                 <div class="card investment">
-                    <h3>Investments</h3>
+                    <h3>Inversiones</h3>
                     <div class="amount" id="total-investment">$0</div>
-                    <div class="count" id="investment-count">0 transactions</div>
+                    <div class="count" id="investment-count">0 transacciones</div>
                 </div>
                 <div class="card balance">
-                    <h3>Net Balance</h3>
+                    <h3>Balance neto</h3>
                     <div class="amount" id="net-balance">$0</div>
                 </div>
             </div>

@@ -160,40 +160,45 @@ async def root():
         return f.read()
 
 @app.get("/api/dashboard")
-async def get_dashboard():
+async def get_dashboard(month: Optional[str] = Query(None)):
+    if not month:
+        month = datetime.now().strftime('%Y-%m')
+
     conn = get_db()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT type, COUNT(*) as count, SUM(amount) as total
         FROM transactions
+        WHERE substr(date, 1, 7) = ?
         GROUP BY type
-    """)
+    """, (month,))
     summary = {row['type']: {'count': row['count'], 'total': row['total']} for row in cursor.fetchall()}
 
     cursor.execute("""
         SELECT category_main, SUM(amount) as total, COUNT(*) as count
         FROM transactions
-        WHERE type = 'expense'
+        WHERE type = 'expense' AND substr(date, 1, 7) = ?
         GROUP BY category_main
         ORDER BY total DESC
-    """)
+    """, (month,))
     expenses_by_category = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute("""
         SELECT category_main, SUM(amount) as total, COUNT(*) as count
         FROM transactions
-        WHERE type = 'income'
+        WHERE type = 'income' AND substr(date, 1, 7) = ?
         GROUP BY category_main
         ORDER BY total DESC
-    """)
+    """, (month,))
     income_by_category = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute("""
         SELECT * FROM transactions
+        WHERE substr(date, 1, 7) = ?
         ORDER BY date DESC, id DESC
         LIMIT 10
-    """)
+    """, (month,))
     recent = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute("""
